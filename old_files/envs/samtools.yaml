@@ -1,0 +1,7 @@
+channels:
+  - compbiocore
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - samtools=1.3.1

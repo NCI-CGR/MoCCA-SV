@@ -1,0 +1,66 @@
+#### Analysis parameters ####
+analysisMode: TN  # TN, TO, germline, de_novo
+callers:  # yes or no
+  svaba: no
+  breakdancer: yes
+  delly: no
+  manta: no
+refGenome: /DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/hg19_canonical_correct_chr_order.fa # for testing TN
+#refGenome: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/results_ukraine_trios/human_g1k_v37.fasta # for testing de_novo
+chrPrefix: "chromosome" # either "chr" or ""
+#excludeFile: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/results_ukraine_trios/svaba/exclude.bed
+
+#### Sample information ####
+#inFile: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input/tests_chr5bams.txt  # for testing TN
+inFile: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/test_cases/test_in/tests_chr3bams.txt  # for testing TN
+#inFile: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input/de_novo_tests_chr3bams.txt  # for testing de novo
+  # must contain three columns: sample name, tumor bam, normal bam (space-delimited)
+  # or, if de novo, must contain family ID, parent1 bam, parent2 bam, child bam
+  # or, if germline, must contain sample name and bam
+  # or, if tumor-only, must contain tumor bam...and PON?
+  # ALSO, if the callers available have differing capabilities, be sure to have a check in the snakefile (e.g. if delly can't do tumor-only, check for delly=yes and react appropriately in the TO snakefile)
+
+#### Filtering thresholds ####
+svaba_filters:
+  thing1: 1
+  thing2: 2
+breakdancer_filters:
+  qualThreshold: 30
+  numSupportingReads: 3
+delly_filters:
+  thing1: 1
+  thing2: 2
+manta_filters:
+  thing1: 1
+  thing2: 2
+
+#### Directories ####
+execDir: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/  
+  # subdirectories: modules, scripts, sv_callers
+outDir: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/test_cases/test_out/
+logDir: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/test_cases/test_out/logs/
+inDir: /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/test_cases/test_in/
+#inDir: /DCEG/Projects/Exome/SequencingData/BAM_recalibrated/REBC_redo/
+
+#### Cluster parameters ####
+queue: all.q
+maxNumJobs: 100
+maxThreads: 2
+checkInterval: 60
+maxWaitChecks: 3 
+maxRequeue: 3
+
+
+
+
+
+
+
+# set ExecDir = /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/sv_callers;  #/home/zhub2/bin/verifyBamID_1.1.0/verifyBamID/bin;
+# set BinSVCalling = snowman;
+# set Param = run -p 4;
+# set Queue = xxlong.q;
+# set RefVCF = /DCEG/CGF/Bioinformatics/Production/BZhu/snowman/test/ref/hg19_canonical_correct_chr_order.fa;
+# set MaxFailure = 3; # maximum number of failures allowed for the same job.
+# set MaxRunning = 300; # maximum running time allowed for the same job. only running jobs are considered with "r/s/S/T/h" status. The actually waiting time = $waiting_interval * $max_running ~ 5 hrs
+# set WaitInterval = 20; # waiting time between check_jobs tasks.

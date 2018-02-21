@@ -1,0 +1,622 @@
+#!/usr/bin/env python3
+
+'''
+Merging
+For studies which have analysed multiple samples, DGV will merge sample level calls together that share a 70% reciprocal overlap measured by length and position.
+
+Various strategies to harmonize SVs:
+  1.  Reciprocal overlap: if overlap is greater than X% of each of the two SVs being compared, then call it a match
+  2.  End-matching: if both ends are within X bases, then call it a match
+
+formats:
+breakdancer has it's own format, but it has chr1 pos1 and chr2 pos2
+delly is vcf, has chr1 pos1 and chr2 pos2 (the latter two in INFO)
+manta is vcf, has chr1 pos1 and END in the INFO (possibly more for BND type?  MATE_ID?)
+svaba is vcf, has chr1 pos1 and chr2 pos2 in the ALT field
+
+types reported:
+breakdancer
+  CTX, INV, DEL, INS, ITX
+delly
+  BND, INV, DEL, DUP, INS
+manta
+  BND, INV, DEL, DUP, INS
+svaba
+  BND (need to use info in ALT field to infer type)
+
+NOTES:
+    For insertions: add 500bp padding??  how to ID insertions?  just say anything with span less than 10?  50?  1?  (probably 50 is safe, since these guys mostly call SVs greater than 50....)
+    Are these output files 0- or 1-based?  do I need to subtract 1 from start?  Does it really matter?
+    Do I need to de-dup/collapse SVs as I am doing currently?  What about inter-chrom SVs (currently leaving alone)?
+    Need to do some quality filtering prior to using this script, as I de-dup/collapse without regard to which call is higher quality.
+    I currently count # of overlaps for intra-chr SVs, and 0/1 whether there is any overlap for inter-chr SVs.  Ok?
+    Still need to figure out how to add this info back on to the original output (or to combine all output as one superset along with these annotations).
+    intra-chrom translocations??  how are these annotated?  can I ID them and put them into the same two bed files as inter?
+'''
+
+# conf=/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_4callers/config_list.yaml snakemake -s /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/modules/Snakefile_compare_and_annotate
+
+import os
+
+conf = os.environ.get("conf")
+configfile: conf
+execDir = config['execDir']
+genomeBuild = config['genomeBuild']
+CALLERS = config['callers']
+interchromPad = config['annotationParams']['interchromPadding']
+crossCallerOverlap = config['annotationParams']['crossCallerOverlap']
+genContextOverlap = config['annotationParams']['genomicContextOverlap']
+publicDataOverlap = config['annotationParams']['publicDataOverlap']
+bamList = config['inFile']
+
+SAMPLES = ['A90G']  # to get from the sample list referenced in config file when done testing
+GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
+PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
+GENESET_BEDS = ['RefSeq']
+
+genomicContextPath = execDir + 'annotation/genomic_context/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genomic_context/GRCh37_no_chr/'
+publicDatasetsPath = execDir + 'annotation/public_datasets/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/public_datasets/GRCh37_no_chr/'
+genesPath = execDir + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
+
+inDir = config['outDir']
+#inDir = '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_4callers/'
+outDir = inDir + 'compare_and_annotate/'
+
+with open(bamList) as f:
+       SAMPLES = [line.split()[0] for line in f]
+
+rule all:
+    input:
+        expand(outDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=SAMPLES),
+        expand(outDir + '{caller}/intrachromosomal/annotated.{sample}.compare.summary', caller=CALLERS, sample=SAMPLES)
+
+rule convert_to_bed:
+    '''
+    For all callers listed in the config file, use a script called
+    <caller>_to_bed.sh to convert the caller output to bed format.
+
+    - For intra-chromosomal SVs, a single bed entry is sufficient (sample.bed).
+
+    - For inter-chromosomal SVs, two bed entries describe the two break points
+    (one on each chromosome - sample_end1.bed and sample_end2.bed).  The "tp"
+    parameter defines the string to identify inter-chromosomal SVs.
+
+    - Output bed files also contain a fourth column with the line number of the
+    SV from the input file, to allow for adding data back to the original
+    format, and to ID breakend pairs for inter-chromosomal SVs.
+
+    Delly-specific notes:
+
+    - If delly was used to call SVs, combine the results into a single file,
+    then convert to bed format.  Note that you need to go through the step
+    of combining all SVs, then separating out BND from the intra-chromosomal
+    SVs, in order to generate unique line number identifiers.
+
+    Svaba-specific notes:
+
+    - Note that svaba reports all SVs as "BND", but for inter-chromosomal SVs,
+    SPAN=-1 (it should be a positive integer for all other SV types).  This is
+    explained in the VCF header entry for SPAN.
+
+    - To interpret SV types (see https://github.com/walaj/svaba/issues/4 and
+    pgs 12-13 in the VCF4.2 spec) in the svaba VCF:
+        n]] ++ inversion
+        n[[ +- deletion
+        ]]n -+ duplication/insertion
+        [[n -- inversion
+
+    Still working on the best way to detect input files.  If any given caller
+    input file isn't detected, use the config file as "input"; it will not be
+    changed in any way but you can't have no input file. #TODO
+    '''
+    input:
+        # conf
+        inDir + 'delly_TN/somatic/{sample}_INV.bcf' if 'delly' in CALLERS else conf,
+        inDir + 'delly_TN/somatic/{sample}_INS.bcf' if 'delly' in CALLERS else conf,
+        inDir + 'delly_TN/somatic/{sample}_DEL.bcf' if 'delly' in CALLERS else conf,
+        inDir + 'delly_TN/somatic/{sample}_DUP.bcf' if 'delly' in CALLERS else conf,
+        inDir + 'delly_TN/somatic/{sample}_BND.bcf' if 'delly' in CALLERS else conf,
+        inDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if 'manta' in CALLERS else conf,
+        inDir + 'breakdancer_TN/somatic/{sample}.out' if 'breakdancer' in CALLERS else conf,
+        inDir + 'svaba_TN/calls/{sample}.svaba.somatic.sv.vcf' if 'svaba' in CALLERS else conf
+    output:
+        outDir + '{caller}/bed_input/{sample}_intra.bed',
+        outDir + '{caller}/bed_input/{sample}_end1.bed',
+        outDir + '{caller}/bed_input/{sample}_end2.bed'
+    params:
+        path = execDir + 'scripts/',
+        outDir = outDir + '{caller}/bed_input/',
+        inDir = inDir
+    shell:
+        '{params.path}{wildcards.caller}_to_bed.sh {wildcards.sample} {params.inDir} {params.outDir}'
+
+rule remove_identical_calls:
+    '''
+    Sort each of the bed files in non-karyotypic order (for use with
+    bedtools -sorted).  For inter-chromosomal SVs,
+    first check that the paired files have the same number of SVs listed.  For
+    bed entries in a given file that have identical chr, start, and end (but
+    not necessarily line number), keep only the first. This removes identical
+    calls (e.g. chr1 123 345, chr1 345 123, and the second one got switched
+    around to conform to expected bed format; or, some SV callers report two
+    VCF lines per single SV).
+
+    Note that for inter-chromosomal SVs, breakends are considered non-unique
+    only if BOTH ends are non-unique.
+    '''
+    input:
+        sameChrom = outDir + '{caller}/bed_input/{sample}_intra.bed',
+        end1 = outDir + '{caller}/bed_input/{sample}_end1.bed',
+        end2 = outDir + '{caller}/bed_input/{sample}_end2.bed'
+    output:
+        sameChrom = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        end1 = outDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
+        end2 = outDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
+    run:
+        shell('sort -k 1,1 -k2,2n -k3,3n --stable --unique {input.sameChrom} > {output.sameChrom}')
+        l1 = sum(1 for line in open(input.end1))
+        l2 = sum(1 for line in open(input.end2))
+        if l1 != l2:
+            print('ERROR: ' + input.end1 + ' and ' + input.end2 + 'contain a non-matching number of SVs.')
+        elif l1 == l2:
+            shell('paste {input.end1} {input.end2} | sort -k1,1 -k2,2n -k3,3n -k5,5 -k6,6n -k7,7n --stable --unique | cut -d"\t" -f1-4 > {output.end1}')
+            shell('paste {input.end2} {input.end1} | sort -k1,1 -k2,2n -k3,3n -k5,5 -k6,6n -k7,7n --stable --unique | cut -d"\t" -f1-4 > {output.end2}')
+
+# rule find_self_matches:
+#     '''
+#     Some SVs may be called more than once by a single caller (e.g.
+#     chr1 123 324, chr1 324 123; or chr1 12 22, chr1 11 21).  This step
+#     identifies self-matches with at least 90% reciprocal overlap.  Why do this?
+#     Good example: variable break ends in a repetitive sequence.
+
+#     NOTE: don't use v2.21; the -sorted option is buggy (e.g. doesn't
+#     report an overlap of an exactly identical SV with -r -f 0.9, though this
+#     behaves as expected when you remove the -sorted flag).  Use v2.26 - newly
+#     added to the modules.
+#     '''
+#     input:
+#         outDir + '{caller}/bed_input/{sample}.uniq.bed'
+#     output:
+#         outDir + '{caller}/bed_input/{sample}.self.compare'
+#     shell:
+#         'module load bedtools/2.26.0;'
+#         'intersectBed \
+#             -a {input} \
+#             -b {input} \
+#             -sorted \
+#             -f 0.9 \
+#             -r \
+#             -wao > {output};'
+
+#             # maybe create a column that tracks whether a given line number had a 90% reciprocal match detected to map back to the original output?  note that not every line in the original bed file will have info appended, since it will not be considered if it's collapsed or de-duplicated.
+
+# rule find_outermost_breakends:
+#     '''
+#     This step parses the output from bedtools and records the outermost
+#     breakpoints for every overlapping SV.  Note that this results in multiple
+#     identical SVs (e.g. if chr1 123 345 and chr1 124 346 overlap, this changes
+#     both to chr1 123 346).
+#     '''
+#     input:
+#         outDir + '{caller}/bed_input/{sample}.self.compare'
+#     output:
+#         outDir + '{caller}/bed_input/{sample}.outermost.bed'
+#     run:
+#         svDict = {}
+#         with open(str(input), 'r') as f:
+#             for line in f:
+#                 fields = line.split()
+#                 key, values = fields[3], fields[0:3]
+#                 if key not in svDict:
+#                     svDict[key] = values
+#                 if int(svDict[key][1]) > int(fields[5]):
+#                     svDict[key][1] = fields[5]
+#                 if int(svDict[key][2]) < int(fields[6]):
+#                     svDict[key][2] = fields[6]
+#         with open(str(output), 'w') as out:
+#             if '-1' in svDict.values():
+#                 print('ERROR: Each value from this step should have a match.')
+#             else:
+#                 for key, values in svDict.items():
+#                     out.write('\t'.join(values + [key]) + '\n')
+
+#     # bedtools merge????
+
+# rule collapse_self_matches:
+#     '''
+#     This step creates a bed file where any SV that has at least
+#     90% reciprocal overlap is collapsed into a single variant call.  The new
+#     breakpoints for the collapsed call are the widest two breakpoints from the
+#     overlapping calls.
+#     '''
+#     input:
+#         outDir + '{caller}/bed_input/{sample}.outermost.bed'
+#     output:
+#         outDir + '{caller}/bed_input/{sample}.collapsed.bed'
+#     shell:
+#         'sort -k1,1 -k2,2n -k3,3n --stable --unique {input} > {output}'
+
+rule compare_intra_SVs:
+    '''
+    This rule uses bedtools intersect to compare each caller output against
+    itself and the other callers' output files.  For the self-comparison,
+    there should be one overlapping hit per SV for most SVs.  There will be
+    some SVs with >1 hit, because of the following scenario:
+
+        A = -----------------
+        B =     -----------------
+        C =         -----------------
+        A and B have 90% reciprocal overlap
+        B and C have 90% reciprocal overlap
+        A and C do NOT have 90% reciprocal overlap
+        A and B+C might have 90% reciprocal overlap - I would need to do a
+            second round of collapsing to resolve these.
+
+    Can I use bedtools multiinter -i a.bed b.bed c.bed?  Useful for any
+    overlap, but can't adjust -f and -r, nor can you print size of overlap,
+    other feature, etc.  Also, this tool outputs the intervals over which
+    there are matches - does not preserve the ends of your SVs.  Not what
+    I want.
+    '''
+    input:
+        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        dbs = expand(outDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=SAMPLES)
+    output:
+        outDir + '{caller}/intrachromosomal/{sample}.compare'
+    params:
+        overlap = crossCallerOverlap
+    shell:
+        'module load bedtools/2.26.0;'
+        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -f {params.overlap} -r -wao > {output}' #HERE
+        # would using -c instead of -wao obviate the following rule?  would have to do it on each caller one-by-one I think.  Not sure how this would work in a rule.
+
+rule parse_intra_comparison:
+    '''
+    Counts the number of overlapping hits from each caller found in the
+    previous rule.
+
+    NOTE: This comparison relies on having the caller name somewhere in the path/filename.
+
+    #TODO think about whether to count hits, or just 1 for any overlap, 0 for none.
+    '''
+    input:
+        outDir + '{caller}/intrachromosomal/{sample}.compare'
+    output:
+        outDir + '{caller}/intrachromosomal/{sample}.compare.summary'
+    run:
+        svDict = {}
+        with open(str(input), 'r') as f:
+            for line in f:
+                fields = line.split()
+                key, values = fields[3], fields[0:3]
+                values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
+                if key not in svDict:
+                    svDict[key] = values
+                for i in range(0, len(CALLERS)):
+                    if CALLERS[i] in fields[4]:
+                        svDict[key][i+3] += 1
+        with open(str(output), 'w') as out:
+            out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'line_num']) + '\n')  # write header
+            int_svDict = {int(k) : v for k, v in svDict.items()}
+            for key, values in sorted(int_svDict.items()):
+                for i in range(3, (len(CALLERS) + 3)):  # count the number of callers with at least one overlapping hit
+                    if values[i] > 0:
+                        int_svDict[key][-1] += 1
+                out.write('\t'.join(str(x) for x in values + [key]) + '\n')  # write dict numerically sorted by keys (line numbers)
+
+rule pad_inter_chrom_ends:
+    '''
+    '''
+    input:
+        end1 = outDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
+        end2 = outDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
+    output:
+        end1 = outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        end2 = outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed'
+    params:
+        genome = execDir + 'annotation/human_g1k_v37.genome',
+        pad = interchromPad,
+        path = execDir + 'scripts/'
+    shell:
+        'module load bedtools/2.26.0;'
+        'bash {params.path}pad_bed.sh {params.pad} {input.end1} {params.genome} {output.end1};'
+        'bash {params.path}pad_bed.sh {params.pad} {input.end2} {params.genome} {output.end2}'
+
+rule compare_inter_chr_end1:
+    '''
+    '''
+    input:
+        query = outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        dbs = expand(outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=SAMPLES)
+    output:
+        outDir + '{caller}/interchromosomal/{sample}_end1.compare'
+    shell:
+        'module load bedtools/2.26.0;'
+        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
+
+rule compare_inter_chr_end2:
+    '''
+    '''
+    input:
+        query = outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
+        dbs = expand(outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=SAMPLES)
+    output:
+        outDir + '{caller}/interchromosomal/{sample}_end2.compare'
+    shell:
+        'module load bedtools/2.26.0;'
+        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
+
+rule parse_inter_comparison:
+    '''
+    Unlike for intra-chromosomal comparisons, this rule counts whether a
+    matching SV exists in a given caller, NOT the number of matches.  This
+    is partly because I am not removing or collapsing duplicate/overlapping
+    breakends, so there may be multiple overlaps for a given breakend.
+
+    The line number from the original caller output file servers as the unique
+    ID and connects end1 and end2.  First, for end1, the count for a given
+    caller is changed from 0 to 1 if the end is detected by the caller.  Then,
+    for end2, the count is changed from 1 to 2 if the end is detected by the
+    caller AND there is a 1 already (aka end1 was detected by that caller).
+    E.g.:
+        0 = end1 not detected, stays at 0 regardless of end2 detection
+        1 = end1 detected, but end2 not detected
+        2 = both end1 and end2 detected
+
+    The final output is only 0 or 1; 1 indicates that the inter-chromosmal SV
+    was found (end1 and end2) while 0 indicates that the inter-chromsomal SV
+    was not found (all other cases).
+
+    Bear in mind that, like the intra-comparison, this compares each caller to
+    all callers, so for one column, every SV should be detected (e.g. for manta
+    calls, the manta column in the output should be all 1s).
+
+    bedtools pairtopair could be useful here, but requires bedpe format.
+    '''
+    input:
+        end1 = outDir + '{caller}/interchromosomal/{sample}_end1.compare',
+        end2 = outDir + '{caller}/interchromosomal/{sample}_end2.compare'
+    output:
+        outDir + '{caller}/interchromosomal/{sample}.compare.summary'
+    run:
+        svDict = {}
+        with open(str(input.end1), 'r') as f1:
+            for line in f1:
+                fields = line.split()
+                key, values = fields[3], fields[0:3]
+                values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
+                if key not in svDict:
+                    svDict[key] = values
+                for i in range(0, len(CALLERS)):  # detect whether there are any overlapping occurences of end1
+                    if CALLERS[i] in fields[4]:
+                        svDict[key][i+3] = 1
+        with open(str(input.end2), 'r') as f2:
+            for line in f2:
+                fields = line.split()
+                key = fields[3]
+                if key not in svDict:
+                    print('ERROR: matching end2 breakpoint not detected.')
+                    exit(1)
+                for i in range(0, len(CALLERS)):  # count overlapping occurences of end1 AND end2
+                    if CALLERS[i] in fields[4] and svDict[key][i+3] == 1:
+                        svDict[key][i+3] = 2
+        with open(str(output), 'w') as out:
+            out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'line_num']) + '\n')  # write header
+            for key, values in svDict.items():
+                for i in range(3, (len(CALLERS) + 3)):
+                    if values[i] == 2:
+                        svDict[key][i] = int(values[i] / 2)
+                        svDict[key][-1] += 1
+                    else:
+                        svDict[key][i] = 0
+                out.write('\t'.join(str(x) for x in values + [key]) + '\n')
+
+rule query_genomic_context:
+    '''
+    Note - all beds are sorted non-karyotypically for use with bedtools -sorted
+
+    RepeatMasker, telo/centro, and SegDups tracks from UCSC
+
+    Telo_Centro: intervals padded by 100kb
+
+    Output format: chr start end line_num count_of_intersecting_SVs
+    '''
+    input:
+        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        db = genomicContextPath + '{genomicContextFile}.bed'
+    output:
+        outDir + '{caller}/intrachromosomal/{genomicContextFile}.{sample}'
+    params:
+        overlap = genContextOverlap
+    shell:
+        'module load bedtools/2.26.0;'
+        'bedtools intersect -a {input.query} -b {input.db} -sorted -f {params.overlap} -c > {output}'
+        # removed -r because it doesn't need to be reciprocal - if 70% of a variant is in a repeat region, for example, it doesn't matter how much of the repeat region is covered
+
+# # see (https://www.ncbi.nlm.nih.gov/dbvar/content/human_hub/) for useful dbVar datasets
+
+rule query_public_datasets:
+    '''
+    Note - all beds are sorted non-karyotypically for use with bedtools -sorted
+
+    DGV from UCSC tack
+    1000 Genomes, ClinGen, and ClinVar from dbVar
+
+    from dbvar overview page:
+        Variant regions (sv): Variant regions are regions of the genome that a
+        submitter has defined as containing structural variation. Very little
+        meta-data is contained on these objects, as they are meant to provide
+        a mark on the genome to define regions containing variation. Variant
+        regions point to sets of exemplar variant instances which support the
+        assertion that the region contains variation. Important: Key to
+        understanding dbVar's data model is an awareness that variant regions
+        do not represent reference variants, nor are they idealized
+        representations of individual structural variant events. Rather, they
+        are simply markers on the genome to denote regions within which
+        structural variation has been observed. It may be helpful to think of
+        variant regions as similar to ss-IDs used in dbSNP - they are
+        submitters'assertions concerning the location of variation. Variant
+        region ids are prefixed with ‘nsv’ if the data were accessioned at
+        NCBI and ‘esv’ if t were accessioned at EBI.
+
+        Variant calls (ssv): Variant calls are the individual instances of
+        structural variation observed in a study and are based on the output
+        of raw data analyses.
+
+    1000 Genomes (estd219) notes:
+    - 1000 Genomes Consortium Phase 3 Integrated SV (estd219) (healthy) from
+    dbVar
+        variants = 66k (variant regions)
+        supporting_variants = 8m (variant calls)
+    - From Sudmant et al. 2015; 1000 Genomes Phase 3 structural variants as
+    reported in a companion paper specifically dedicated to SV analysis.
+    Much of these data are identical to those reported in the main paper as
+    study estd214.
+    - I uniq'd the file, so I'm not counting number of occurrences of the same
+    var.
+    - supporting_variants_for_estd219.hg19.sorted.ins_padded.uniq.bed =
+    hg19_sorted/1KG.bed
+
+    ClinVar (nstd102) notes:
+    - nstd102 (ClinVar submitted variants) - 765 SVs with clinical assertions
+    - Note that I took the largest SV region for each (e.g. both outer
+    coords if available) for this bed.
+    - supporting_variants_for_nstd102.hg19.sorted.bed = hg19_sorted/ClinVar.bed
+
+    ClinGen (nstd37) notes:
+    - nstd37 is the ClinGen Laboratory-Submitted data - 33378 SVs with clinical
+    assertions as classified by the original submitter.
+    - nstd101 (not used here) contains data from the original published study
+    Kaminksy et al, 2011.
+    - Note that I took the largest SV region for each (e.g. both outer
+    coords if available) for this bed.
+    - supporting_variants_for_nstd37.hg19.sorted.bed = hg19_sorted/ClinGen.bed
+
+    DGV notes:
+    - This is the only one from UCSC instead of dbVar.  It only looks at
+    intra-chromsomal SVs from healthy individuals.
+
+    Note that SVs affecting <10bp (insertions) in 1kG data have been padded by
+    +/-500bp.  ClinVar data does not include any insertions that meet this
+    criteria.  Neither does ClinGen.
+
+    # TODO: check DGV for insertions that need padding
+    #TODO: think about whether there are any other fields that would be helpful here
+    '''
+    input:
+        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        db = publicDatasetsPath + '{publicDataFile}.bed'
+    output:
+        outDir + '{caller}/intrachromosomal/{publicDataFile}.{sample}'
+    params:
+        overlap = publicDataOverlap
+    shell:
+        'module load bedtools/2.26.0;'
+        'bedtools intersect -a {input.query} -b {input.db} -sorted -f {params.overlap} -r -wao > {output}'
+
+
+# # rule generate_hit_list:
+#     '''
+#     Use bedtools multiinter to find regions that are covered in all/most? samples (by all/most callers?)
+#     Then make a second rule to annotate files based on this list
+#     '''
+
+# # may want to use multiinter on a whole cohort to find likely technical false positives!
+
+rule format_genomic_context_counts:
+    input:
+        outDir + '{caller}/intrachromosomal/{genomicContextFile}.{sample}'
+    output:
+        temp(outDir + '{caller}/intrachromosomal/cut-{genomicContextFile}.{sample}')
+    params:
+        header = '{genomicContextFile}'
+    shell:
+        'echo \"{params.header}\" > {output};'
+        'sort -k4,4n {input} | cut -f5 >> {output}'
+
+rule format_public_data_hits:
+    '''
+    '''
+    input:
+        outDir + '{caller}/intrachromosomal/{publicDataFile}.{sample}'
+    output:
+        temp(outDir + '{caller}/intrachromosomal/parse-{publicDataFile}.{sample}')
+    run:
+        svDict = {}
+        with open(str(input), 'r') as f:
+            for line in f:
+                fields = line.split()
+                key, values = fields[3], fields[7:10]
+                if key not in svDict:
+                    svDict[key] = values
+                else:
+                    i = 0
+                    for x, y in zip(svDict[key], values):
+                        svDict[key][i] = x + ';' + y
+                        i += 1
+        with open(str(output), 'w') as out:
+            out.write('\t'.join([wildcards.publicDataFile + '_sv_type', wildcards.publicDataFile + '_pheno', wildcards.publicDataFile + '_clinical_assertion']) + '\n')  # write header
+            int_svDict = {int(k) : v for k, v in svDict.items()}
+            for key, values in sorted(int_svDict.items()):
+                out.write('\t'.join(str(x) for x in values) + '\n')  # write dict numerically sorted by keys (line numbers)
+
+rule find_intersected_genes:
+    '''
+    #TODO do for intra and inter (need to think about how inter would work...list all genes affected?  just the fused genes?)
+    '''
+    input:
+        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        db = genesPath + '{geneset}.bed'
+    output:
+        outDir + '{caller}/intrachromosomal/{geneset}.{sample}'
+    shell:
+        'module load bedtools/2.26.0;'
+        'bedtools intersect -a {input.query} -b {input.db} -sorted -wao > {output}'
+
+rule format_intersected_genes:
+    input:
+        outDir + '{caller}/intrachromosomal/{geneset}.{sample}'
+    output:
+        temp(outDir + '{caller}/intrachromosomal/gene-{geneset}.{sample}')
+    run:
+        svDict = {}
+        with open(str(input), 'r') as f:
+            for line in f:
+                fields = line.split()
+                key, values = fields[3], fields[7:9]
+                if key not in svDict:
+                    svDict[key] = values
+                else:
+                    i = 0
+                    for x, y in zip(svDict[key], values):
+                        svDict[key][i] = x + ';' + y
+                        i += 1
+        with open(str(output), 'w') as out:
+            out.write('\t'.join([wildcards.geneset + '_transcripts', wildcards.geneset + '_genes']) + '\n')  # write header
+            int_svDict = {int(k) : v for k, v in svDict.items()}
+            for key, values in sorted(int_svDict.items()):
+                out.write('\t'.join(str(x) for x in values) + '\n')  # write dict numerically sorted by keys (line numbers)
+
+rule add_annotation:
+    input:
+        db1 = expand(outDir + '{{caller}}/intrachromosomal/cut-{genomicContextFile}.{{sample}}', genomicContextFile=GENOMIC_CONTEXT_BEDS),
+        db2 = expand(outDir + '{{caller}}/intrachromosomal/parse-{publicDataFile}.{{sample}}', publicDataFile=PUBLIC_DATA_BEDS),
+        db3 = expand(outDir + '{{caller}}/intrachromosomal/gene-{geneset}.{{sample}}', geneset=GENESET_BEDS),
+        summ = outDir + '{caller}/intrachromosomal/{sample}.compare.summary'
+    output:
+        outDir + '{caller}/intrachromosomal/annotated.{sample}.compare.summary'
+    shell:
+        'paste {input.summ} {input.db1} {input.db2} {input.db3} | sed \"s/-1/\./\" > {output}'
+#TODO: confirm by hand that these intermediate files are all sorted by line number!
+
+# # rule add_counts_to_orig:
+# #     input:
+# #         outDir + '{caller}/{sample}.compare.summary'
+# #         outDir + 'delly/{sample}_all.txt'
+# #         f = inDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
+# #         f = inDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
+# #         f = inDir + 'svaba_TN/calls/{sample}.svaba.somatic.sv.vcf' if svaba else ''
+# #     output:
+# #         df
+# #     shell:
+# #         awk '{FS=OFS="\t"}{print $0, NR}' $inFile

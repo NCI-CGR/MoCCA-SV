@@ -1,0 +1,7 @@
+channels:
+  - faircloth-lab
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - samtools=0.1.19

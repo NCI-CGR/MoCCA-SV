@@ -1,0 +1,6 @@
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - perl=5.22.2.1  # note that it's 5.18.0 on cgems

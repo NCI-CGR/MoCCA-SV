@@ -1,0 +1,786 @@
+#!/usr/bin/env python3
+
+import os
+import subprocess
+
+# snakemake -s modules/Snakefile_meerkat_somatic --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 2" --jobs 100 --latency-wait 300
+# qsub -q xlong.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat SV_wrapper.sh
+
+
+conf = os.environ.get("conf")
+configfile: conf
+execDir = config['execDir']
+parentDir = config['outDir']
+workingDir = parentDir + 'meerkat_TN/'
+dataDir = config['inDir']
+bamList = config['inFile']
+nt = config['maxThreads']
+ref = config['refGenome']
+
+refFile = os.path.basename(ref)  # get basename from ref variable
+
+# read in a file where each row has the pair name, tumor file name, normal file name
+# this could change depending on functionality required, eg
+# if tumor and normal bams have the same name but are in different directories
+# (currently assuming same directory for T and N)
+bamDict = {}
+with open(bamList) as f:
+    for line in f:
+        (pair, tumor, normal) = line.split()
+        bamDict[pair] = (dataDir + tumor, dataDir + normal)
+
+
+def get_tumor_bam(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return tumor
+
+
+def get_tumor_index(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return tumor + '.bai'
+
+
+def get_normal_bam(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return normal
+
+
+def get_normal_index(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return normal + '.bai'
+
+
+# def get_tumor_read_groups(wildcards):
+#     import subprocess
+#     myFile = get_tumor_bam  # assuming this subroutine call will work like this
+#     command = 'module load samtools; samtools view -H ' + myFile + ' | grep -Eo "@RG\sID:\S+" | cut -d":" -f2'
+#     readGroups = subprocess.check_output(command, shell=True)
+#     readGroups = readGroups.decode().split('\n')[:-1]
+#     return readGroups  # a list of read groups in the given bam
+
+
+# def get_normal_read_groups(wildcards):
+#     import subprocess
+#     myFile = get_normal_bam
+#     command = 'module load samtools; samtools view -H ' + myFile + ' | grep -Eo "@RG\sID:\S+" | cut -d":" -f2'
+#     readGroups = subprocess.check_output(command, shell=True)
+#     readGroups = readGroups.decode().split('\n')[:-1]
+#     return readGroups  # a list of read groups in the given bam
+
+rule all:
+    input:
+        expand(workingDir + 'somatic_filtering/{sample}/{sample}_T.step7.variants', sample=bamDict.keys())
+
+
+# test with trio data and T/N data (one's with bwamem, one's with novo)
+# ln -s /DCEG/Projects/Exome/SequencingData/BAM_recalibrated/REBC_redo/REBC_REBC_UA0276_A90H-10A-01D_blood_A.bam ./REBC_REBC_UA0276_A90H-10A-01D_blood_A.bam  # novo
+# ln -s /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input/SC056067_t0016p2_chr5.bam ./SC056067_t0016p2_chr5.bam  # bwa
+# module load perl gcc/4.8.4 samtools/0.1.19
+# export LD_LIBRARY_PATH=/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/Meerkat/src/mybamtools/lib:$LD_LIBRARY_PATH
+
+# NOTE: make the parameters user-defined from config file
+# NOTE: make UCSC repeatmasker path user-defined (currently hard-coded for testing)
+
+rule meerkat_softlink_ref_seq:
+    '''
+    Meerkat needs the reference sequence in its own folder.  This rule creates the appropriate
+    directory structure and symlinks the fasta file from the one provided in the config.  It also
+    checks to ensure that a required perl module is present.
+    '''
+    input:
+        ref
+    output:
+        workingDir + 'refGenome/fasta/' + refFile
+    run:
+        command = 'source /etc/profile.d/modules.sh; module load perl; perl -MBio::Seq -e 0'
+        perlOut = subprocess.check_output(command, shell=True)
+        perlOut = perlOut.decode().strip()
+        if not perlOut:
+            shell('ln -s {input} {output}')
+        else:
+            print('ERROR: Perl module Bio::DB::Fasta not found.')
+
+# rule meerkat_perl_index_ref_seq:  # this is done when meerkat.pl is run
+#     input:
+#         workingDir + 'refGenome/fasta/' + refFile
+#     params:
+#         path = execDir + 'scripts/'
+#     output:
+#         workingDir + 'refGenome/fasta/' + refFile + '.index'
+#     shell:
+#         'module load perl;'
+#         'perl {params.path}index_fasta.pl {input}'
+
+rule meerkat_bwa_index_ref:
+    '''
+    Create bwa indices of the reference sequence.
+    NOTE: should just symlink or copy if indices exist.
+    '''
+    input:
+        workingDir + 'refGenome/fasta/' + refFile
+    output:
+        amb = workingDir + 'refGenome/fasta/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/fasta/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/fasta/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/fasta/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/fasta/' + refFile + '.sa'
+    shell:
+        'module load bwa;'
+        'bwa index -a bwtsw {input}'
+
+rule meerkat_fai_index_ref:
+    '''
+    Create samtools index of the reference sequence.
+    NOTE: should just symlink or copy if indices exist.
+    '''
+    input:
+        workingDir + 'refGenome/fasta/' + refFile
+    output:
+        fai = workingDir + 'refGenome/fasta/' + refFile + '.fai'
+    shell:
+        'module load samtools;'
+        'samtools faidx {input}'
+
+# consider having the previous two rules make these index files in the refgenome directory from the config file, then the rule below copies them to the appropriate directories, so that they will only get re-indexed if necessary?
+
+rule meerkat_move_files:
+    '''
+    Meerkat seems to have very specific requirements for location of the reference fasta
+    and the indices.  This rule moves the files to conform to those requirements.  See
+    Meerkat documentation for details.
+    '''
+    input:
+        fai = workingDir + 'refGenome/fasta/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/fasta/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/fasta/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/fasta/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/fasta/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/fasta/' + refFile + '.sa'
+    output:
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa'
+    shell:
+        'mv {input.fai} {output.fai};'
+        'mv {input.amb} {output.amb};'
+        'mv {input.ann} {output.ann};'
+        'mv {input.bwt} {output.bwt};'
+        'mv {input.pac} {output.pac};'
+        'mv {input.sa} {output.sa}'
+
+rule meerkat_symlink_bams:
+    '''
+    Meerkat suggests symlinking bams to subdirectories to help manage the numerous
+    intermediate files that are generated during SV calling.  Symlinks are re-named
+    to have a _T or _N for tumor or normal.
+    '''
+    input:
+        t = get_tumor_bam,
+        tIndex = get_tumor_index,
+        n = get_normal_bam,
+        nIndex = get_normal_index
+    output:
+        t = workingDir + 'calling/{sample}/{sample}_T.bam',
+        n = workingDir + 'calling/{sample}/{sample}_N.bam',
+    shell:
+        'ln -s {input.t} {output.t};'
+        'ln -s {input.n} {output.n}'
+
+rule meerkat_t_pre_process_is:
+    '''
+    From here on, all scripts are run in parallel on tumor and normal bams in duplicate
+    rules.  Most of the steps are the same, but not all.
+
+    The pre_process step consists of three sub-stages (is, cl1, cl2).  They are run here
+    in series, as they each depend upon the output of previous steps.  However, the
+    output files and dependencies are not evident in the documentation, so it is
+    more straightforward to assemble them in a single rule than to tease them apart.
+
+    Note that all stages can be run in a single command with -P all (or by leaving out
+    the -P option altogether, as it defaults to all), but then you can't take advantage
+    of multi-threading for stage cl1.
+    '''
+    input:
+        t = get_tumor_bam,
+        tIndex = get_tumor_index,
+        bam = workingDir + 'calling/{sample}/{sample}_T.bam',
+        fa = workingDir + 'refGenome/fasta/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        bwaPath = workingDir + 'refGenome/bwa_idx/' + refFile
+        # -W flag above gives path to bwa 0.6.2, which is an older version specified as a requirement in the meerkat documentation
+        #libPath = execDir + 'sv_callers/Meerkat/src/mybamtools/lib:$LD_LIBRARY_PATH'
+    output:
+        workingDir + 'calling/{sample}/{sample}_T.blacklist.gz',
+        workingDir + 'calling/{sample}/{sample}_T.isinfo',
+        workingDir + 'calling/{sample}/{sample}_T.pdf',
+        workingDir + 'calling/{sample}/{sample}_T.pre.log',
+        workingDir + 'calling/{sample}/{sample}_T.softclips.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_T.softclips.rdist',
+        workingDir + 'calling/{sample}/{sample}_T.sr.1.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_T.sr.2.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_T.unmapped.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_T.unmapped.rdist'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P is'
+        #'export LD_LIBRARY_PATH={params.libPath};'  # weirdly, this doesn't seem to stick - put in submit.sh
+        #'echo $LD_LIBRARY_PATH > {params.outPath}libpath.txt;'
+
+rule meerkat_t_pre_process_cl:
+    '''
+    From here on, all scripts are run in parallel on tumor and normal bams in duplicate
+    rules.  Most of the steps are the same, but not all.
+
+    The pre_process step consists of three sub-stages (is, cl1, cl2).  They are run here
+    in series, as they each depend upon the output of previous steps.  However, the
+    output files and dependencies are not evident in the documentation, so it is
+    more straightforward to assemble them in a single rule than to tease them apart.
+
+    Note that all stages can be run in a single command with -P all (or by leaving out
+    the -P option altogether, as it defaults to all), but then you can't take advantage
+    of multi-threading for stage cl1.
+    '''
+    input:
+        t = get_tumor_bam,
+        tIndex = get_tumor_index,
+        bam = workingDir + 'calling/{sample}/{sample}_T.bam',
+        fa = workingDir + 'refGenome/fasta/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa',
+        i1 = workingDir + 'calling/{sample}/{sample}_T.blacklist.gz',
+        i2 = workingDir + 'calling/{sample}/{sample}_T.isinfo',
+        i3 = workingDir + 'calling/{sample}/{sample}_T.pdf',
+        i4 = workingDir + 'calling/{sample}/{sample}_T.pre.log',
+        i5 = workingDir + 'calling/{sample}/{sample}_T.softclips.fq.gz',
+        i6 = workingDir + 'calling/{sample}/{sample}_T.softclips.rdist',
+        i7 = workingDir + 'calling/{sample}/{sample}_T.sr.1.fq.gz',
+        i8 = workingDir + 'calling/{sample}/{sample}_T.sr.2.fq.gz',
+        i9 = workingDir + 'calling/{sample}/{sample}_T.unmapped.fq.gz',
+        i10 = workingDir + 'calling/{sample}/{sample}_T.unmapped.rdist'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        bwaPath = workingDir + 'refGenome/bwa_idx/' + refFile
+        # -W flag above gives path to bwa 0.6.2, which is an older version specified as a requirement in the meerkat documentation
+        #libPath = execDir + 'sv_callers/Meerkat/src/mybamtools/lib:$LD_LIBRARY_PATH'
+    output:
+        workingDir + 'calling/{sample}/{sample}_T.cl.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_T.cl.sorted.bam.bai'
+        # cl1 stage outputs are one .sai file per readgroup in a subfolder
+    threads: nt
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl1 -t {threads};'
+        'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl2'
+        #'export LD_LIBRARY_PATH={params.libPath};'  # weirdly, this doesn't seem to stick - put in submit.sh
+        #'echo $LD_LIBRARY_PATH > {params.outPath}libpath.txt;'
+
+rule meerkat_n_pre_process_is:
+    '''
+    See comments on rule above.
+    '''
+    input:
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        bam = workingDir + 'calling/{sample}/{sample}_N.bam',
+        fa = workingDir + 'refGenome/fasta/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa',
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        bwaPath = workingDir + 'refGenome/bwa_idx/' + refFile
+    output:
+        workingDir + 'calling/{sample}/{sample}_N.blacklist.gz',
+        workingDir + 'calling/{sample}/{sample}_N.isinfo',
+        workingDir + 'calling/{sample}/{sample}_N.pdf',
+        workingDir + 'calling/{sample}/{sample}_N.pre.log',
+        workingDir + 'calling/{sample}/{sample}_N.softclips.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_N.softclips.rdist',
+        workingDir + 'calling/{sample}/{sample}_N.sr.1.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_N.sr.2.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_N.unmapped.fq.gz',
+        workingDir + 'calling/{sample}/{sample}_N.unmapped.rdist'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P is'
+        # run each sub-stage of pre_processes.pl separately, to utilize multi-threading capability in cl1
+
+
+rule meerkat_n_pre_process_cl:
+    '''
+    See comments on rule above.  
+    '''
+    input:
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        bam = workingDir + 'calling/{sample}/{sample}_N.bam',
+        fa = workingDir + 'refGenome/fasta/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa',
+        i1 = workingDir + 'calling/{sample}/{sample}_N.blacklist.gz',
+        i2 = workingDir + 'calling/{sample}/{sample}_N.isinfo',
+        i3 = workingDir + 'calling/{sample}/{sample}_N.pdf',
+        i4 = workingDir + 'calling/{sample}/{sample}_N.pre.log',
+        i5 = workingDir + 'calling/{sample}/{sample}_N.softclips.fq.gz',
+        i6 = workingDir + 'calling/{sample}/{sample}_N.softclips.rdist',
+        i7 = workingDir + 'calling/{sample}/{sample}_N.sr.1.fq.gz',
+        i8 = workingDir + 'calling/{sample}/{sample}_N.sr.2.fq.gz',
+        i9 = workingDir + 'calling/{sample}/{sample}_N.unmapped.fq.gz',
+        i10 = workingDir + 'calling/{sample}/{sample}_N.unmapped.rdist'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        bwaPath = workingDir + 'refGenome/bwa_idx/' + refFile
+    threads: nt
+    output:
+        workingDir + 'calling/{sample}/{sample}_N.cl.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_N.cl.sorted.bam.bai'
+        # cl1 stage outputs are one .sai file per readgroup in a subfolder
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl1 -t {threads};'
+        'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl2'
+
+
+# logs $ tail snakejob.meerkat_n_pre_process_cl2.0.sh.o9032524 (t also)
+# Wed Nov 22 14:24:18 2017 Pre-process v.0.189 started
+# [samopen] SAM header is present: 25 sequences.
+# Line 1572887, sequence length 23 vs 126 from CIGAR
+# Parse error at line 1572887: CIGAR and sequence length are inconsistent
+# sh: line 1: 73315 Segmentation fault      (core dumped) /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2/bwa sampe -P -N 100 /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/refGenome/bwa_idx/hg19_canonical_correct_chr_order.fa /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/calling/A90G/A90G_N/REBC_REBC_UA0193_A90G-10A-01D_blood_A_1.sai /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/calling/A90G/A90G_N/REBC_REBC_UA0193_A90G-10A-01D_blood_A_2.sai /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/calling/A90G/A90G_N/REBC_REBC_UA0193_A90G-10A-01D_blood_A_1.fq.gz /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/calling/A90G/A90G_N/REBC_REBC_UA0193_A90G-10A-01D_blood_A_2.fq.gz 2>> bwa.err
+#      73316 Done                    | perl -e 'while (<>){chomp;@a=split(/\t/,$_);if($a[1] =~ /:/){print "$_\n";}else{if ($a[11]){$a[11]="RG:Z:REBC_REBC_UA0193_A90G-10A-01D_blood_A\t".$a[11];}else{$a[11]="RG:Z:REBC_REBC_UA0193_A90G-10A-01D_blood_A";}print join("\t",@a),"\n";}}'
+#      73317 Aborted                 (core dumped) | samtools view -bt /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/refGenome/hg19_canonical_correct_chr_order.fa.fai -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_meerkat/meerkat_TN/calling/A90G/A90G_N/REBC_REBC_UA0193_A90G-10A-01D_blood_A.bam -
+# [bam_header_read] EOF marker is absent. The input is probably truncated.
+# Wed Nov 22 15:22:28 2017 Pre-process finished
+# Time used: 0:58:10
+
+###also note - right now, the snakefile says this is finishing successfully, but I'm guessing that's because I only gave it the one output file, and I'm guessing there should be more??
+# ideas....try with filtered bam from manta worflow?
+
+# # ==> snakejob.meerkat_t_pre_process.3.sh.o8955096 <==
+# # Warning: no access to tty (Bad file descriptor).
+# # Thus no job control in this shell.
+# # Mon Nov 20 16:30:30 2017 Pre-process v.0.189 started
+# # Error in read.table("/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/chr5_TN_test_meerkat/meerkat_TN/pre_processing/A90G_chr5_T.unmapped.rdist") :
+# #   no lines available in input
+# # Execution halted
+# ### this is an R error - read.table doesn't deal with blank files on its own - should have a "try" or something to handle
+
+
+rule meerkat_t_call_SVs:
+    '''
+    The meerkat.pl step can be separated into sequential sub-stages dc, cl, mpd, alg1,
+    alg2, srd, and rf.  Only alg1 can use multi-threading.
+
+    For the tumor analysis, the blacklist file from the normal is copied over the tumor data-
+    derived blacklist.
+    '''
+    input:
+        t = get_tumor_bam,
+        tIndex = get_tumor_index,
+        tLink = workingDir + 'calling/{sample}/{sample}_T.bam',
+        fa = workingDir + 'refGenome/fasta/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa',
+        blacklist = workingDir + 'calling/{sample}/{sample}_N.blacklist.gz',
+        i1 = workingDir + 'calling/{sample}/{sample}_T.blacklist.gz',
+        i2 = workingDir + 'calling/{sample}/{sample}_T.isinfo',
+        i3 = workingDir + 'calling/{sample}/{sample}_T.pdf',
+        i4 = workingDir + 'calling/{sample}/{sample}_T.pre.log',
+        i5 = workingDir + 'calling/{sample}/{sample}_T.softclips.fq.gz',
+        i6 = workingDir + 'calling/{sample}/{sample}_T.softclips.rdist',
+        i7 = workingDir + 'calling/{sample}/{sample}_T.sr.1.fq.gz',
+        i8 = workingDir + 'calling/{sample}/{sample}_T.sr.2.fq.gz',
+        i9 = workingDir + 'calling/{sample}/{sample}_T.unmapped.fq.gz',
+        i10 = workingDir + 'calling/{sample}/{sample}_T.unmapped.rdist',
+        i11 = workingDir + 'calling/{sample}/{sample}_T.cl.sorted.bam',
+        i12 = workingDir + 'calling/{sample}/{sample}_T.cl.sorted.bam.bai'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        outPath = workingDir + 'calling/{sample}/',
+        fastaPath = workingDir + 'refGenome/fasta/'
+    threads: nt
+    output:
+        workingDir + 'calling/{sample}/{sample}_T.bp.fasta',
+        workingDir + 'calling/{sample}/{sample}_T.bp.info',
+        workingDir + 'calling/{sample}/{sample}_T.bp_reads',
+        workingDir + 'calling/{sample}/{sample}_T.cl.disc.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_T.cl.dup.bam',
+        workingDir + 'calling/{sample}/{sample}_T.clusters',
+        workingDir + 'calling/{sample}/{sample}_T.discord',
+        workingDir + 'calling/{sample}/{sample}_T.disc.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_T.dre.log',
+        workingDir + 'calling/{sample}/{sample}_T.dup.bam',
+        workingDir + 'calling/{sample}/{sample}_T.inter.refined.typ.sorted',
+        workingDir + 'calling/{sample}/{sample}_T.intra.refined.typ.sorted',
+        workingDir + 'calling/{sample}/{sample}_T.mp.inter.out',
+        workingDir + 'calling/{sample}/{sample}_T.mp.intra.out',
+        workingDir + 'calling/{sample}/{sample}_T.sr.1.sai',
+        workingDir + 'calling/{sample}/{sample}_T.sr.2.sai',
+        workingDir + 'calling/{sample}/{sample}_T.sr.bam',
+        workingDir + 'calling/{sample}/{sample}_T.sr.inter.filtered',
+        workingDir + 'calling/{sample}/{sample}_T.sr.inter.out',
+        workingDir + 'calling/{sample}/{sample}_T.sr.intra.filtered',
+        workingDir + 'calling/{sample}/{sample}_T.sr.intra.out',
+        workingDir + 'calling/{sample}/{sample}_T.sr.sam',
+        workingDir + 'calling/{sample}/{sample}_T.sr.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_T.sr.sorted.bam.bai'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'cp {input.blacklist} {params.outPath}{wildcards.sample}_T.blacklist.gz;'  # use the blacklist from the normal bam for tumor SV calling (as specified in documentation)
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P dc;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P cl;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P mpd;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg1 -t {threads};'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg2;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P srd;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P rf'
+
+rule meerkat_n_call_SVs:
+    '''
+    See comments on rule above.
+    '''
+    input:
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        nLink = workingDir + 'calling/{sample}/{sample}_N.bam',
+        fa = workingDir + 'refGenome/fasta/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        amb = workingDir + 'refGenome/bwa_idx/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/bwa_idx/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/bwa_idx/' + refFile + '.bwt',
+        pac = workingDir + 'refGenome/bwa_idx/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/bwa_idx/' + refFile + '.sa',
+        blacklist = workingDir + 'calling/{sample}/{sample}_N.blacklist.gz',
+        i1 = workingDir + 'calling/{sample}/{sample}_N.blacklist.gz',
+        i2 = workingDir + 'calling/{sample}/{sample}_N.isinfo',
+        i3 = workingDir + 'calling/{sample}/{sample}_N.pdf',
+        i4 = workingDir + 'calling/{sample}/{sample}_N.pre.log',
+        i5 = workingDir + 'calling/{sample}/{sample}_N.softclips.fq.gz',
+        i6 = workingDir + 'calling/{sample}/{sample}_N.softclips.rdist',
+        i7 = workingDir + 'calling/{sample}/{sample}_N.sr.1.fq.gz',
+        i8 = workingDir + 'calling/{sample}/{sample}_N.sr.2.fq.gz',
+        i9 = workingDir + 'calling/{sample}/{sample}_N.unmapped.fq.gz',
+        i10 = workingDir + 'calling/{sample}/{sample}_N.unmapped.rdist',
+        i11 = workingDir + 'calling/{sample}/{sample}_N.cl.sorted.bam',
+        i12 = workingDir + 'calling/{sample}/{sample}_N.cl.sorted.bam.bai'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        fastaPath = workingDir + 'refGenome/fasta/'
+    output:
+        workingDir + 'calling/{sample}/{sample}_N.bp.fasta',
+        workingDir + 'calling/{sample}/{sample}_N.bp.info',
+        workingDir + 'calling/{sample}/{sample}_N.bp_reads',
+        workingDir + 'calling/{sample}/{sample}_N.cl.disc.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_N.cl.dup.bam',
+        workingDir + 'calling/{sample}/{sample}_N.clusters',
+        workingDir + 'calling/{sample}/{sample}_N.discord',
+        workingDir + 'calling/{sample}/{sample}_N.disc.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_N.dre.log',
+        workingDir + 'calling/{sample}/{sample}_N.dup.bam',
+        workingDir + 'calling/{sample}/{sample}_N.inter.refined.typ.sorted',
+        workingDir + 'calling/{sample}/{sample}_N.intra.refined.typ.sorted',
+        workingDir + 'calling/{sample}/{sample}_N.mp.inter.out',
+        workingDir + 'calling/{sample}/{sample}_N.mp.intra.out',
+        workingDir + 'calling/{sample}/{sample}_N.sr.1.sai',
+        workingDir + 'calling/{sample}/{sample}_N.sr.2.sai',
+        workingDir + 'calling/{sample}/{sample}_N.sr.bam',
+        workingDir + 'calling/{sample}/{sample}_N.sr.inter.filtered',
+        workingDir + 'calling/{sample}/{sample}_N.sr.inter.out',
+        workingDir + 'calling/{sample}/{sample}_N.sr.intra.filtered',
+        workingDir + 'calling/{sample}/{sample}_N.sr.intra.out',
+        workingDir + 'calling/{sample}/{sample}_N.sr.sam',
+        workingDir + 'calling/{sample}/{sample}_N.sr.sorted.bam',
+        workingDir + 'calling/{sample}/{sample}_N.sr.sorted.bam.bai'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P dc;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P cl;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P mpd;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg1 -t {threads};'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg2;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P srd;'
+        'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P rf'
+
+rule meerkat_t_mechanism:
+    '''
+    Very quick - labels called SVs with their mechanism (TEI, TEA, VNTR...
+    see Meerkat documentation for details).
+    '''
+    input:
+        t = get_tumor_bam,
+        tIndex = get_tumor_index,
+        tLink = workingDir + 'calling/{sample}/{sample}_T.bam',
+        i1 = workingDir + 'calling/{sample}/{sample}_T.bp.fasta',
+        i2 = workingDir + 'calling/{sample}/{sample}_T.bp.info',
+        i3 = workingDir + 'calling/{sample}/{sample}_T.bp_reads',
+        i4 = workingDir + 'calling/{sample}/{sample}_T.cl.disc.sorted.bam',
+        i5 = workingDir + 'calling/{sample}/{sample}_T.cl.dup.bam',
+        i6 = workingDir + 'calling/{sample}/{sample}_T.clusters',
+        i7 = workingDir + 'calling/{sample}/{sample}_T.discord',
+        i8 = workingDir + 'calling/{sample}/{sample}_T.disc.sorted.bam',
+        i9 = workingDir + 'calling/{sample}/{sample}_T.dre.log',
+        i10 = workingDir + 'calling/{sample}/{sample}_T.dup.bam',
+        i11 = workingDir + 'calling/{sample}/{sample}_T.inter.refined.typ.sorted',
+        i12 = workingDir + 'calling/{sample}/{sample}_T.intra.refined.typ.sorted',
+        i13 = workingDir + 'calling/{sample}/{sample}_T.mp.inter.out',
+        i14 = workingDir + 'calling/{sample}/{sample}_T.mp.intra.out',
+        i15 = workingDir + 'calling/{sample}/{sample}_T.sr.1.sai',
+        i16 = workingDir + 'calling/{sample}/{sample}_T.sr.2.sai',
+        i17 = workingDir + 'calling/{sample}/{sample}_T.sr.bam',
+        i18 = workingDir + 'calling/{sample}/{sample}_T.sr.inter.filtered',
+        i19 = workingDir + 'calling/{sample}/{sample}_T.sr.inter.out',
+        i20 = workingDir + 'calling/{sample}/{sample}_T.sr.intra.filtered',
+        i21 = workingDir + 'calling/{sample}/{sample}_T.sr.intra.out',
+        i22 = workingDir + 'calling/{sample}/{sample}_T.sr.sam',
+        i23 = workingDir + 'calling/{sample}/{sample}_T.sr.sorted.bam',
+        i24 = workingDir + 'calling/{sample}/{sample}_T.sr.sorted.bam.bai'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/'
+    output:
+        workingDir + 'calling/{sample}/{sample}_T.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}mechanism.pl \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -b {input.tLink}'
+
+rule meerkat_n_mechanism:
+    '''
+    See comments on rule above.
+
+    Currently doesn't run, because there are no downstream steps that require the _N.variants file!
+    '''
+    input:
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        nLink = workingDir + 'calling/{sample}/{sample}_N.bam',
+        i1 = workingDir + 'calling/{sample}/{sample}_N.bp.fasta',
+        i2 = workingDir + 'calling/{sample}/{sample}_N.bp.info',
+        i3 = workingDir + 'calling/{sample}/{sample}_N.bp_reads',
+        i4 = workingDir + 'calling/{sample}/{sample}_N.cl.disc.sorted.bam',
+        i5 = workingDir + 'calling/{sample}/{sample}_N.cl.dup.bam',
+        i6 = workingDir + 'calling/{sample}/{sample}_N.clusters',
+        i7 = workingDir + 'calling/{sample}/{sample}_N.discord',
+        i8 = workingDir + 'calling/{sample}/{sample}_N.disc.sorted.bam',
+        i9 = workingDir + 'calling/{sample}/{sample}_N.dre.log',
+        i10 = workingDir + 'calling/{sample}/{sample}_N.dup.bam',
+        i11 = workingDir + 'calling/{sample}/{sample}_N.inter.refined.typ.sorted',
+        i12 = workingDir + 'calling/{sample}/{sample}_N.intra.refined.typ.sorted',
+        i13 = workingDir + 'calling/{sample}/{sample}_N.mp.inter.out',
+        i14 = workingDir + 'calling/{sample}/{sample}_N.mp.intra.out',
+        i15 = workingDir + 'calling/{sample}/{sample}_N.sr.1.sai',
+        i16 = workingDir + 'calling/{sample}/{sample}_N.sr.2.sai',
+        i17 = workingDir + 'calling/{sample}/{sample}_N.sr.bam',
+        i18 = workingDir + 'calling/{sample}/{sample}_N.sr.inter.filtered',
+        i19 = workingDir + 'calling/{sample}/{sample}_N.sr.inter.out',
+        i20 = workingDir + 'calling/{sample}/{sample}_N.sr.intra.filtered',
+        i21 = workingDir + 'calling/{sample}/{sample}_N.sr.intra.out',
+        i22 = workingDir + 'calling/{sample}/{sample}_N.sr.sam',
+        i23 = workingDir + 'calling/{sample}/{sample}_N.sr.sorted.bam',
+        i24 = workingDir + 'calling/{sample}/{sample}_N.sr.sorted.bam.bai'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/'
+    output:
+        workingDir + 'calling/{sample}/{sample}_N.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}mechanism.pl \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -b {input.nLink}'
+
+rule meerkat_assemble_normals_for_filtering:
+    '''
+    Meerkat authors recommend that you filter against all normal genomes for a given tumor
+    type.  To do this, you need all the *.discord files in a single folder (symlinked in
+    this rule).
+    '''
+    input:
+        workingDir + 'calling/{sample}/{sample}_N.discord'
+    params:
+        workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'all_normal_discord/{sample}_N.discord'
+    shell:
+        'ln -s {input} {params}'
+
+rule meerkat_filter_somatic_1:
+    '''
+    This rule and all the remaining ones follow the filtering strategy described in the
+    Meerkat documentation for filtering high-confidence somatic variants.
+    '''
+    input:
+        tVars = workingDir + 'calling/{sample}/{sample}_T.variants',
+        norms = expand(workingDir + 'all_normal_discord/{sample}_N.discord', sample=bamDict.keys())
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step1.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -F {params.disc} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -l 1000'
+
+rule meerkat_filter_somatic_2:
+    '''
+    '''
+    input:
+        tVars = workingDir + 'somatic_filtering/{sample}/{sample}_T.step1.variants',
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        nLink = workingDir + 'calling/{sample}/{sample}_N.bam',
+        nIsInfo = workingDir + 'calling/{sample}/{sample}_N.isinfo'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step2.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -n 1 \
+            -D 5 \
+            -Q 10 \
+            -B {input.nLink} \
+            -I {input.nIsInfo}'
+
+rule meerkat_filter_somatic_3:
+    '''
+    '''
+    input:
+        tVars = workingDir + 'somatic_filtering/{sample}/{sample}_T.step2.variants',
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        nLink = workingDir + 'calling/{sample}/{sample}_N.bam'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step3.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -u 1 \
+            -Q 10 \
+            -B {input.nLink}'
+
+rule meerkat_filter_somatic_4:
+    '''
+    '''
+    input:
+        tVars = workingDir + 'somatic_filtering/{sample}/{sample}_T.step3.variants',
+        n = get_normal_bam,
+        nIndex = get_normal_index,
+        nLink = workingDir + 'calling/{sample}/{sample}_N.bam'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step4.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -f 1 \
+            -Q 10 \
+            -B {input.nLink}'
+
+rule meerkat_filter_somatic_5:
+    '''
+    '''
+    input:
+        tVars = workingDir + 'somatic_filtering/{sample}/{sample}_T.step4.variants',
+        t = get_normal_bam,
+        tIndex = get_normal_index,
+        tLink = workingDir + 'calling/{sample}/{sample}_N.bam',
+        tIsInfo = workingDir + 'calling/{sample}/{sample}_N.isinfo'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step5.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -e 1 \
+            -D 5 \
+            -Q 10 \
+            -B {input.tLink} \
+            -I {input.tIsInfo}'
+
+rule meerkat_filter_somatic_6:
+    '''
+    '''
+    input:
+        tVars = workingDir + 'somatic_filtering/{sample}/{sample}_T.step5.variants'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step6.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -z 1'
+
+rule meerkat_filter_somatic_7:
+    '''
+    '''
+    input:
+        tVars = workingDir + 'somatic_filtering/{sample}/{sample}_T.step6.variants'
+    params:
+        scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
+        disc = workingDir + 'all_normal_discord/'
+    output:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step7.variants'
+    shell:
+        'module load perl gcc samtools/0.1.19 blast blat R;'
+        'perl {params.scriptsPath}somatic_sv.pl \
+            -i {input.tVars} \
+            -o {output} \
+            -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
+            -d 40 \
+            -t 20'

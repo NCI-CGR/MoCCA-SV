@@ -1,0 +1,134 @@
+# Merging
+# For studies which have analysed multiple samples, DGV will merge sample level calls together that share a 70% reciprocal overlap measured by length and position.
+
+
+# Various strategies to harmonize SVs:
+#   1.  look for overlap - if overlap is greater than X% of (each of the two?) SVs being compared, then call it a match
+#   2.  or (maybe easier with the data I have) look at the ends - if both ends are within X% of the span of the SVs (or some threshold for inter-chrom translocations), then call it a match
+#       - use SPAN or SIZE or other such metric to determine percentage
+#       - or just set a window
+
+# # useful notes:
+#   # bedtools intersect has some good features but I'll need to coordinate two searches per SV (one for each end) and collate the results (for diff chroms)
+#   # bedtools pairtopair?
+
+# formats:
+# breakdancer has it's own format, but it has chr1 pos1 and chr2 pos2
+# delly is vcf, has chr1 pos1 and chr2 pos2 (the latter two in INFO)
+# manta is vcf, has chr1 pos1 and END in the INFO (possibly more for BND type?  MATE_ID?)
+# svaba is vcf, has chr1 pos1 and chr2 pos2 in the ALT field
+
+# types reported:
+# breakdancer
+#   ITX, INV, DEL, ??
+# delly
+#   BND, INV, DEL, DUP, INS
+# manta
+#   BND, INV, DEL, DUP, INS
+# svaba
+#   BND, ??
+
+
+
+# for INV, DEL, DUP, INS:
+#   given >1 file with SVs
+#       first make separate bed files, one per SV type
+#       second use bedtools intersect to find all the SVs that overlap within each type:  
+
+#           $ bedtools intersect -wa -wb \
+#               -a query.bed \
+#               -b d1.bed d2.bed d3.bed \  # query against more than one file in one go
+#               -names d1 d2 d3 \  # name the query files and write to a column
+#               -sorted \  # use to make this faster - make sure they are sorted first
+#               -f 0.9  # 90% overlap of the query (-a) record 
+
+#               chr1  1   20  d1  chr1  5   25
+#               chr1  40  45  d2  chr1  40  50
+#               chr1  70  90  d1  chr1  65  75
+#               chr1  70  90  d3  chr1  85  115
+
+#           $ bedtools intersect -a A.bed -b B.bed -loj
+#               chr1  10  20  chr 15  20
+#               chr1  30  40  . -1  -1
+
+#           $ bedtools intersect -a A.bed -b B.bed -wao
+#               chr1    10    20    chr1    15  20  5
+#               chr1    10    20    chr1    18  25  2
+#               chr1    30    40    .       -1  -1  0
+
+#           -r, and -f Requiring reciprocal minimal overlap fraction
+#           Similarly, you may want to require that a minimal fraction of both the A and the B features is overlapped. For example, if feature A is 1kb and feature B is 1Mb, you might not want to report the overlap as feature A can overlap at most 1% of feature B. If one set -f to say, 0.02, and one also enable the -r (reciprocal overlap fraction required), this overlap would not be reported.
+
+#           $ bedtools intersect -a A.bed -b B.bed -f 0.50 -r -wa -wb
+#               chr1 100 200 chr1 130 201
+
+#       third...may have to iterate to get all the SVs from each file compared
+#       fourth somehow combine all the SVs with the overlap info added in?
+
+# for BND/ITX:
+#   look only at the ends and compare them
+
+
+# conf=/DCEG/
+conf = os.environ.get("conf")
+configfile: conf
+svaba = config['callers'->'svaba']
+manta = config['callers'->'manta']
+breakdancer = config['callers'->'breakdancer']
+delly = config['callers'->'delly']
+meerkat = config['callers'->'meerkat']
+
+# # note - are these output files 0- or 1-based?  do I need to subtract 1 from start?
+
+rule delly_to_bed:
+    input:
+    output:
+    run:
+        if 
+        shell("module load bcftools")
+
+
+#   module load bcftools
+#   for each of the delly files DUP, INV, INS, DEL:
+#       bcftools view {file} | awk '{FS="\t"} ($0 !~ /^#/){print $1, $2, gensub(/.*;END=([0-9]+);.*/, "\\1", "g")}' > {file}.bed  # word boundary?  what if there's no ";" on one side or the other?
+
+# manta_to_bed
+
+#   for each (DUP, INV, INS, DEL):
+#       zgrep -v "^#" {file} | awk '{FS="\t"} ($5 !~ /<{TYPE}>/){print $1, $2, gensub(/.*[[:blank:]]END=([0-9]+);.*/, "\\1", "g")}' > {file}_{TYPE}.bed
+
+# svaba_to_bed
+
+#   for each (DUP, INV, INS, DEL):
+#       grep -v "^#" {file} | awk '{FS="\t"} ($8 !~ /SVTYPE={TYPE} /){print $1, $2, gensub(/.*[[:blank:]]END=([0-9]+);.*/, "\\1", "g")}' > {file}_{TYPE}.bed
+#       # need more data to see the pattern.
+
+# breakdancer_to_bed
+    
+#   for each (DUP, INV, INS, DEL):
+#       grep -v "^#" {file} | awk '{FS="\t"} ($7 !~ /{TYPE} /){print $1, $2, $5}' > {file}_{TYPE}.bed
+
+# compare_same_chr_SVs:
+
+#   sort bed files (see bedtools documentation for recommended sort) - actually, maybe I should sort the input files?  both?
+#   module load bedtools
+#   for each {sample} and {type}:
+#       bedtools intersect \
+#           -a {file1.bed} \
+#           -b {file2.bed file3.bed file4.bed} \
+#           -names 1 2 3 4 \
+#           -sorted \
+#           -f 0.9 \
+#           -r \
+#           -wao \
+#           -wb
+
+#           (test this)
+
+#           think about how to get all vars - do I need to run this four times, giving each file a chance to be "a," or can I limit somewhat?
+#               1-2 2-3 3-4
+#               1-3 2-4 
+#               1-4
+#           not quite, because order matters.  think I may have to do each individually.  hmm.
+#           also, how does this report multiple matches?  multiple rows?
+#           it may actually be easier to compare one-on-one, and then add 1 or not based on the last few columns...

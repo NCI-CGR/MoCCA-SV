@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+
+import os
+
+# snakemake -s Snakefile_manta_somatic --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y" --jobs 100 --latency-wait 300
+
+conf = os.environ.get("conf")
+configfile: conf
+execDir = config['execDir']
+parentDir = config['outDir']
+workingDir = parentDir + 'manta_TN/'
+dataDir = config['inDir']
+bamList = config['inFile']
+nt = config['maxThreads']
+ref = config['refGenome']
+
+refNoExt = os.path.splitext(ref)[0]
+
+# read in a file where each row has the pair name, tumor file name, normal file name
+# this could change depending on functionality required, eg
+# if tumor and normal bams have the same name but are in different directories
+# (currently assuming same directory for T and N)
+bamDict = {}
+with open(bamList) as f:
+    for line in f:
+        (pair, tumor, normal) = line.split()
+        bamDict[pair] = (dataDir + tumor, dataDir + normal)
+
+
+def get_tumor_bam(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return tumor
+
+
+def get_tumor_index(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return tumor + '.bai'
+
+
+def get_normal_bam(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return normal
+
+
+def get_normal_index(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return normal + '.bai'
+
+rule all:
+    input:
+        expand(workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/candidateSV.vcf.gz', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/diploidSV.vcf.gz', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/somaticSV.vcf.gz', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys())
+
+rule manta_index_ref:
+    input:
+        ref
+    output:
+        fai = ref + '.fai'
+    shell:
+        'module load samtools;'
+        'samtools faidx {input};'
+
+rule manta_filter_t_bams:
+    input:
+        t = get_tumor_bam
+    output:
+        filtT = workingDir + 'filtered_bams/{sample}_T.bam'
+    params:
+        path = execDir + 'scripts/'
+    shell:
+        'module load samtools;'
+        '{params.path}filter_bams.sh {input.t} {output.filtT}'
+
+rule manta_filter_n_bams:
+    input:
+        n = get_normal_bam
+    output:
+        filtN = workingDir + 'filtered_bams/{sample}_N.bam'
+    params:
+        path = execDir + 'scripts/'
+    shell:
+        'module load samtools;'
+        '{params.path}filter_bams.sh {input.n} {output.filtN}'
+
+rule manta_index_filtered_t_bams:
+    input:
+        filtT = workingDir + 'filtered_bams/{sample}_T.bam'
+    output:
+        workingDir + 'filtered_bams/{sample}_T.bam.bai'
+    shell:
+        'module load samtools;'
+        'samtools index {input.filtT}'
+
+rule manta_index_filtered_n_bams:
+    input:
+        filtN = workingDir + 'filtered_bams/{sample}_N.bam'
+    output:
+        workingDir + 'filtered_bams/{sample}_N.bam.bai'
+    shell:
+        'module load samtools;'
+        'samtools index {input.filtN}'
+
+rule manta_create_run_script:
+    input:
+        t = workingDir + 'filtered_bams/{sample}_T.bam',
+        tIndex = workingDir + 'filtered_bams/{sample}_T.bam.bai',
+        n = workingDir + 'filtered_bams/{sample}_N.bam',
+        nIndex = workingDir + 'filtered_bams/{sample}_N.bam.bai',
+        ref = ref,
+        fai = ref + '.fai'
+    output:
+        outFile = workingDir + '{sample}/runWorkflow.py'
+    params:
+        outParam = workingDir + '{sample}',
+        path = execDir + 'sv_callers/'
+    shell:
+        '{params.path}manta-1.1.1.centos5_x86_64/bin/configManta.py \
+            --normalBam {input.n} \
+            --tumorBam {input.t} \
+            --referenceFasta {input.ref} \
+            --runDir {params.outParam}'
+
+rule manta_call:
+    input:
+        workingDir + '{sample}/runWorkflow.py'
+    output:
+        workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        workingDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        workingDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        workingDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        workingDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        workingDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi',
+        workingDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        workingDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    threads: nt
+    shell:
+        'python {input} -m sge -j {threads}' 
+
+# rule manta_somatic_distributions:
+#     input:
+#     output:
+#     shell:
+
+# rule manta_basic_filtering:
+#     input:
+#     output:
+#     shell:

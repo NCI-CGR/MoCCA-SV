@@ -37,19 +37,19 @@ NOTES:
 # conf=/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_4callers/config_list.yaml snakemake -s /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/modules/Snakefile_compare_and_annotate
 
 import os
+import collections
 
 conf = os.environ.get("conf")
 configfile: conf
 execDir = config['execDir']
 genomeBuild = config['genomeBuild']
+parentDir = config['outDir']
 CALLERS = config['callers']
 interchromPad = config['annotationParams']['interchromPadding']
 crossCallerOverlap = config['annotationParams']['crossCallerOverlap']
 genContextOverlap = config['annotationParams']['genomicContextOverlap']
 publicDataOverlap = config['annotationParams']['publicDataOverlap']
-bamList = config['inFile']
 
-SAMPLES = ['A90G']  # to get from the sample list referenced in config file when done testing
 GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
 PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
 GENESET_BEDS = ['RefSeq']
@@ -59,16 +59,31 @@ publicDatasetsPath = execDir + 'annotation/public_datasets/hg19_chr/' if genomeB
 genesPath = execDir + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
 
 inDir = config['outDir']
-#inDir = '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/TN_test_4callers/'
 outDir = inDir + 'compare_and_annotate/'
 
-with open(bamList) as f:
-       SAMPLES = [line.split()[0] for line in f]
+# make a text file with a header row:
+    # Sample Caller1 Caller2...
+    # A90H /path/and/file.f /path2/and/file2.f...
+
+inputDict = {}
+firstLine = ''
+with open(parentDir + 'SV_files_for_annotation.txt') as f:  # TODO add this file name to config file with a default setting
+    firstLine = f.readline().split()[1:]
+    if collections.Counter(firstLine) != collections.Counter(CALLERS):
+        sys.exit('ERROR: input file headers do not match callers in config file.\n')
+    for line in f:
+        l = line.split()
+        inputDict[l[0]] = l[1:]
+
+def get_input_file(wildcards):
+    l = inputDict[wildcards.sample]
+    i = firstLine.index(wildcards.caller)
+    return l[i]
 
 rule all:
     input:
-        expand(outDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=SAMPLES),
-        expand(outDir + '{caller}/intrachromosomal/annotated.{sample}.compare.summary', caller=CALLERS, sample=SAMPLES)
+        expand(outDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=inputDict.keys()),
+        expand(outDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=inputDict.keys())
 
 rule convert_to_bed:
     '''
@@ -105,30 +120,18 @@ rule convert_to_bed:
         ]]n -+ duplication/insertion
         [[n -- inversion
 
-    Still working on the best way to detect input files.  If any given caller
-    input file isn't detected, use the config file as "input"; it will not be
-    changed in any way but you can't have no input file. #TODO
     '''
     input:
-        # conf
-        inDir + 'delly_TN/somatic/{sample}_INV.bcf' if 'delly' in CALLERS else conf,
-        inDir + 'delly_TN/somatic/{sample}_INS.bcf' if 'delly' in CALLERS else conf,
-        inDir + 'delly_TN/somatic/{sample}_DEL.bcf' if 'delly' in CALLERS else conf,
-        inDir + 'delly_TN/somatic/{sample}_DUP.bcf' if 'delly' in CALLERS else conf,
-        inDir + 'delly_TN/somatic/{sample}_BND.bcf' if 'delly' in CALLERS else conf,
-        inDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if 'manta' in CALLERS else conf,
-        inDir + 'breakdancer_TN/somatic/{sample}.out' if 'breakdancer' in CALLERS else conf,
-        inDir + 'svaba_TN/calls/{sample}.svaba.somatic.sv.vcf' if 'svaba' in CALLERS else conf
+        i = get_input_file
     output:
         outDir + '{caller}/bed_input/{sample}_intra.bed',
         outDir + '{caller}/bed_input/{sample}_end1.bed',
         outDir + '{caller}/bed_input/{sample}_end2.bed'
     params:
         path = execDir + 'scripts/',
-        outDir = outDir + '{caller}/bed_input/',
-        inDir = inDir
+        outDir = outDir + '{caller}/bed_input/'
     shell:
-        '{params.path}{wildcards.caller}_to_bed.sh {wildcards.sample} {params.inDir} {params.outDir}'
+        '{params.path}{wildcards.caller}_to_bed.sh {input.i} {wildcards.sample} {params.outDir}'
 
 rule remove_identical_calls:
     '''
@@ -260,14 +263,14 @@ rule compare_intra_SVs:
     '''
     input:
         query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=SAMPLES)
+        dbs = expand(outDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=inputDict.keys())
     output:
         outDir + '{caller}/intrachromosomal/{sample}.compare'
     params:
         overlap = crossCallerOverlap
     shell:
         'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -f {params.overlap} -r -wao > {output}' #HERE
+        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -f {params.overlap} -r -wao > {output}' 
         # would using -c instead of -wao obviate the following rule?  would have to do it on each caller one-by-one I think.  Not sure how this would work in a rule.
 
 rule parse_intra_comparison:
@@ -276,6 +279,7 @@ rule parse_intra_comparison:
     previous rule.
 
     NOTE: This comparison relies on having the caller name somewhere in the path/filename.
+    TODO this is not ideal.  think about generating the bedtools output differently.
 
     #TODO think about whether to count hits, or just 1 for any overlap, 0 for none.
     '''
@@ -327,7 +331,7 @@ rule compare_inter_chr_end1:
     '''
     input:
         query = outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=SAMPLES)
+        dbs = expand(outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
         outDir + '{caller}/interchromosomal/{sample}_end1.compare'
     shell:
@@ -339,7 +343,7 @@ rule compare_inter_chr_end2:
     '''
     input:
         query = outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=SAMPLES)
+        dbs = expand(outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
         outDir + '{caller}/interchromosomal/{sample}_end2.compare'
     shell:
@@ -425,7 +429,7 @@ rule query_genomic_context:
         query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
         db = genomicContextPath + '{genomicContextFile}.bed'
     output:
-        outDir + '{caller}/intrachromosomal/{genomicContextFile}.{sample}'
+        outDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
     params:
         overlap = genContextOverlap
     shell:
@@ -507,7 +511,7 @@ rule query_public_datasets:
         query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
         db = publicDatasetsPath + '{publicDataFile}.bed'
     output:
-        outDir + '{caller}/intrachromosomal/{publicDataFile}.{sample}'
+        outDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
     params:
         overlap = publicDataOverlap
     shell:
@@ -525,9 +529,9 @@ rule query_public_datasets:
 
 rule format_genomic_context_counts:
     input:
-        outDir + '{caller}/intrachromosomal/{genomicContextFile}.{sample}'
+        outDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
     output:
-        temp(outDir + '{caller}/intrachromosomal/cut-{genomicContextFile}.{sample}')
+        temp(outDir + '{caller}/intrachromosomal/cut-{genomicContextFile}_and_{sample}')
     params:
         header = '{genomicContextFile}'
     shell:
@@ -538,9 +542,9 @@ rule format_public_data_hits:
     '''
     '''
     input:
-        outDir + '{caller}/intrachromosomal/{publicDataFile}.{sample}'
+        outDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
     output:
-        temp(outDir + '{caller}/intrachromosomal/parse-{publicDataFile}.{sample}')
+        temp(outDir + '{caller}/intrachromosomal/parse-{publicDataFile}_and_{sample}')
     run:
         svDict = {}
         with open(str(input), 'r') as f:
@@ -568,16 +572,16 @@ rule find_intersected_genes:
         query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
         db = genesPath + '{geneset}.bed'
     output:
-        outDir + '{caller}/intrachromosomal/{geneset}.{sample}'
+        outDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
     shell:
         'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.db} -sorted -wao > {output}'
 
 rule format_intersected_genes:
     input:
-        outDir + '{caller}/intrachromosomal/{geneset}.{sample}'
+        outDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
     output:
-        temp(outDir + '{caller}/intrachromosomal/gene-{geneset}.{sample}')
+        temp(outDir + '{caller}/intrachromosomal/gene-{geneset}_and_{sample}')
     run:
         svDict = {}
         with open(str(input), 'r') as f:
@@ -599,12 +603,13 @@ rule format_intersected_genes:
 
 rule add_annotation:
     input:
-        db1 = expand(outDir + '{{caller}}/intrachromosomal/cut-{genomicContextFile}.{{sample}}', genomicContextFile=GENOMIC_CONTEXT_BEDS),
-        db2 = expand(outDir + '{{caller}}/intrachromosomal/parse-{publicDataFile}.{{sample}}', publicDataFile=PUBLIC_DATA_BEDS),
-        db3 = expand(outDir + '{{caller}}/intrachromosomal/gene-{geneset}.{{sample}}', geneset=GENESET_BEDS),
+        db1 = expand(outDir + '{{caller}}/intrachromosomal/cut-{genomicContextFile}_and_{{sample}}', genomicContextFile=GENOMIC_CONTEXT_BEDS),
+        db2 = expand(outDir + '{{caller}}/intrachromosomal/parse-{publicDataFile}_and_{{sample}}', publicDataFile=PUBLIC_DATA_BEDS),
+        db3 = expand(outDir + '{{caller}}/intrachromosomal/gene-{geneset}_and_{{sample}}', geneset=GENESET_BEDS),
         summ = outDir + '{caller}/intrachromosomal/{sample}.compare.summary'
     output:
-        outDir + '{caller}/intrachromosomal/annotated.{sample}.compare.summary'
+        # outDir + '{caller}/intrachromosomal/annotated_{sample}.compare.summary'
+        outDir + '{caller}/intrachromosomal/{sample}_annotated_comparison'
     shell:
         'paste {input.summ} {input.db1} {input.db2} {input.db3} | sed \"s/-1/\./\" > {output}'
 #TODO: confirm by hand that these intermediate files are all sorted by line number!

@@ -13,7 +13,8 @@ parentDir = config['outDir']
 workingDir = parentDir + 'breakdancer_de_novo/'
 dataDir = config['inDir']
 bamList = config['inFile']
-chrPrefix = config['chrPrefix']
+chrPrefix = 'chr' if config['genomeBuild'] == 'hg19' else chrPrefix = ''
+
 # nt = config['maxThreads']  # breakdancer doesn't multiple threads (though perhaps I should where I parallelize SV calling per chrom)
 # ref = config['refGenome']  # breakdancer doesn't use a ref
 

@@ -11,7 +11,9 @@ parentDir = config['outDir']
 workingDir = parentDir + 'manta_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
-nt = config['maxThreads']
+callers = config['callers']
+i = callers.index("manta")
+nt = config['maxThreads'][i]
 ref = config['refGenome']
 
 refNoExt = os.path.splitext(ref)[0]
@@ -54,12 +56,12 @@ rule all:
         expand(workingDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/variants/diploidSV.vcf.gz', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/somaticSV.vcf.gz', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys())
+        expand(workingDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
+        parentDir + 'SV_files_for_annotation_manta.txt'
 
 rule manta_index_ref:
     input:
@@ -149,6 +151,23 @@ rule manta_call:
     threads: nt
     shell:
         'python {input} -m sge -j {threads}' 
+
+rule list_output_files:
+    input:
+        workingDir + '{sample}/results/variants/somaticSV.vcf.gz'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_manta.{sample}.txt')
+    shell:
+        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+
+rule merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_manta.txt'
+    shell:
+        'cat {input} | sed "1s/^/sample manta\\n/" > {output}'
+
 
 # rule manta_somatic_distributions:
 #     input:

@@ -11,7 +11,6 @@ parentDir = config['outDir']
 workingDir = parentDir + 'delly_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
-nt = config['maxThreads']
 ref = config['refGenome']
 
 # read in a file where each row has the pair name, tumor file name, normal file name
@@ -48,7 +47,8 @@ def get_normal_index(wildcards):
 
 rule all:
     input:
-        expand(workingDir + 'somatic/{sample}_{type}.bcf', sample=bamDict.keys(), type=TYPES)
+        # expand(workingDir + 'somatic/{sample}_{type}.bcf', sample=bamDict.keys(), type=TYPES),
+        parentDir + 'SV_files_for_annotation_delly.txt'
         # expand(workingDir + 'somatic/{sample}/samples.tsv', sample=bamDict.keys()),
         # expand(workingDir + 'calls/{sample}_{type}.bcf', sample=bamDict.keys(), type=TYPES)
 
@@ -107,9 +107,31 @@ rule delly_pre_filter:
             -s {input.tsv} \
             {input.bcf}'
             # tab-delimited sample description file where the first column is the sample id (as in the VCF/BCF file) and the second column is either tumor or control
-# Getting an error: Sample type for REBC_REBC_UA0193_A90G-10A-01D_blood_A is neither tumor nor control
-# maybe need ".bam" on end?
 
+rule delly_combine_output:
+    input:
+        expand(workingDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES)
+    output:
+        workingDir + 'somatic/{sample}_all.txt'
+    shell:
+        'module load bcftools;'
+        'bcftools concat {input} > {output}'
+
+rule list_output_files:
+    input:
+        workingDir + 'somatic/{sample}_all.txt'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_delly.{sample}.txt')
+    shell:
+        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+
+rule merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_delly.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_delly.txt'
+    shell:
+        'cat {input} | sed "1s/^/sample delly\\n/" > {output}'
 
 
 # rule delly_re_genotype:

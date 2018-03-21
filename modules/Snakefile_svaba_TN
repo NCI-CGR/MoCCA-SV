@@ -12,9 +12,14 @@ parentDir = config['outDir']
 workingDir = parentDir + 'svaba_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
-nt = config['maxThreads']
+callers = config['callers']
+i = callers.index("svaba")
+nt = config['maxThreads'][i]
 ref = config['refGenome']
-chrPrefix = config['chrPrefix']
+if config['genomeBuild']:
+    chrPrefix = 'chr'
+else:
+    chrPrefix = ''
 # logDir = config['logDir'] # not implemented yet
 
 # METRICS1 = ['LO', 'LR', ]  # sample-level parameters to plot
@@ -55,7 +60,8 @@ def get_normal_index(wildcards):
 
 rule all:
     input:
-        workingDir + 'summary.txt'#,
+        workingDir + 'summary.txt',
+        parentDir + 'SV_files_for_annotation_svaba.txt'
         # expand(workingDir + 'plots/{sample}.{metric1}.png', sample=bamDict.keys(), metric1=METRICS1),
         # expand(workingDir + 'plots/{sample}.{metric2}.png', sample=bamDict.keys(), metric2=METRICS2),
         # expand(workingDir + 'svaba/{sample}.svaba.somatic.sv.vcf', sample=bamDict.keys())
@@ -171,3 +177,20 @@ rule svaba_summary:
     shell:
         'grep -vc "^##" {input} >> {output}'
         # weirdly, this throws an error if the grep result is 0, so this way it will always detect at least the header row
+
+rule list_output_files:
+    input:
+        workingDir + 'calls/{sample}.svaba.somatic.sv.vcf'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt')
+    shell:
+        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+
+rule merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_svaba.txt'
+    shell:
+        'cat {input} | sed "1s/^/sample svaba\\n/" > {output}'
+

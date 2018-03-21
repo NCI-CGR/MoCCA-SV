@@ -11,9 +11,11 @@ parentDir = config['outDir']
 workingDir = parentDir + 'svaba_de_novo/'
 dataDir = config['inDir']
 bamList = config['inFile']
-nt = config['maxThreads']
+callers = config['callers']
+i = callers.index("svaba")
+nt = config['maxThreads'][i]
 ref = config['refGenome']
-chrPrefix = config['chrPrefix']
+chrPrefix = 'chr' if config['genomeBuild'] == 'hg19' else chrPrefix = ''
 excl = config['excludeFile']
 # logDir = config['logDir'] # not implemented yet
 

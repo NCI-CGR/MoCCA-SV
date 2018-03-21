@@ -11,7 +11,10 @@ parentDir = config['outDir']
 workingDir = parentDir + 'breakdancer_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
-chrPrefix = config['chrPrefix']
+if config['genomeBuild']:
+    chrPrefix = 'chr'
+else:
+    chrPrefix = ''
 # nt = config['maxThreads']  # breakdancer doesn't multiple threads (though perhaps I should where I parallelize SV calling per chrom)
 # ref = config['refGenome']  # breakdancer doesn't use a ref
 
@@ -52,7 +55,8 @@ rule all:
     input:
         expand(workingDir + 'config/{sample}.config.qc', sample=bamDict.keys()),
         expand(workingDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
-        workingDir + 'summary.txt'
+        workingDir + 'summary.txt',
+        parentDir + 'SV_files_for_annotation_breakdancer.txt'
 
 rule breakdancer_config:
     input:
@@ -182,6 +186,22 @@ rule breakdancer_summary:
     shell:
         'grep -vc "^#" {input} >> {output}'
         # weirdly, this throws an error if the grep result is 0
+
+rule list_output_files:
+    input:
+        workingDir + 'somatic_filtered/{sample}.out'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt')
+    shell:
+        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+
+rule merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_breakdancer.txt'
+    shell:
+        'cat {input} | sed "1s/^/sample breakdancer\\n/" > {output}'
 
 # rule check_logs:
 #     input:

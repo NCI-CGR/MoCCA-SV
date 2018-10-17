@@ -10,22 +10,24 @@ configfile: conf
 execDir = config['execDir']
 parentDir = config['outDir']
 workingDir = parentDir + 'svaba_TN/'
+tempDir = config['tempDir'] + 'svaba_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
 callers = config['callers']
 i = callers.index("svaba")
 nt = config['maxThreads'][i]
 ref = config['refGenome']
-if config['genomeBuild']:
-    chrPrefix = 'chr'
-else:
-    chrPrefix = ''
+# if config['genomeBuild']:
+#     chrPrefix = 'chr'
+# else:
+#     chrPrefix = ''
 # logDir = config['logDir'] # not implemented yet
 
 # METRICS1 = ['LO', 'LR', ]  # sample-level parameters to plot
 # METRICS2 = ['QUAL']  # sample-level parameters to plot
 
-refNoExt = os.path.splitext(ref)[0]
+refFile = os.path.basename(ref)
+refNoExt = os.path.splitext(refFile)[0]
 
 # read in a file where each row has the pair name, tumor file name, normal file name
 # this could change depending on functionality required, eg
@@ -66,17 +68,25 @@ rule all:
         # expand(workingDir + 'plots/{sample}.{metric2}.png', sample=bamDict.keys(), metric2=METRICS2),
         # expand(workingDir + 'svaba/{sample}.svaba.somatic.sv.vcf', sample=bamDict.keys())
 
-rule svaba_index_ref:
+rule svaba_softlink_ref_seq:
     input:
         ref
     output:
-        d = refNoExt + '.dict',
-        amb = ref + '.amb',
-        ann = ref + '.ann',
-        bwt = ref + '.bwt',
-        fai = ref + '.fai',
-        pac = ref + '.pac',
-        sa = ref + '.sa'
+        workingDir + 'refGenome/' + refFile
+    shell:
+        'ln -s {input} {output}'
+
+rule svaba_index_ref:
+    input:
+        workingDir + 'refGenome/' + refFile
+    output:
+        d = workingDir + 'refGenome/' + refNoExt + '.dict',
+        amb = workingDir + 'refGenome/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/' + refFile + '.bwt',
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        pac = workingDir + 'refGenome/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/' + refFile + '.sa'
     shell:
         'module load bwa samtools Picard;'
         'bwa index -a bwtsw {input};'
@@ -89,14 +99,57 @@ rule svaba_call:
         tIndex = get_tumor_index,
         n = get_normal_bam,
         nIndex = get_normal_index,
-        ref = ref,
-        d = refNoExt + '.dict',
-        amb = ref + '.amb',
-        ann = ref + '.ann',
-        bwt = ref + '.bwt',
-        fai = ref + '.fai',
-        pac = ref + '.pac',
-        sa = ref + '.sa'
+        ref = workingDir + 'refGenome/' + refFile,
+        d = workingDir + 'refGenome/' + refNoExt + '.dict',
+        amb = workingDir + 'refGenome/' + refFile + '.amb',
+        ann = workingDir + 'refGenome/' + refFile + '.ann',
+        bwt = workingDir + 'refGenome/' + refFile + '.bwt',
+        fai = workingDir + 'refGenome/' + refFile + '.fai',
+        pac = workingDir + 'refGenome/' + refFile + '.pac',
+        sa = workingDir + 'refGenome/' + refFile + '.sa'
+    output:
+        tempDir + 'calls/{sample}.alignments.txt.gz',
+        tempDir + 'calls/{sample}.bps.txt.gz',
+        tempDir + 'calls/{sample}.contigs.bam',
+        tempDir + 'calls/{sample}.discordant.txt.gz',
+        tempDir + 'calls/{sample}.log',
+        tempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        tempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    threads: nt
+    params:
+        opath = tempDir + 'calls/',
+        epath = execDir + 'sv_callers/'
+    shell:
+        'module load gcc/4.8.4;'
+        '{params.epath}svaba/bin/svaba run \
+            -p {threads} \
+            -G {input.ref} \
+            -t {input.t} \
+            -n {input.n} \
+            -a {params.opath}{wildcards.sample}'
+
+
+rule move_call_files:
+    input:
+        tempDir + 'calls/{sample}.alignments.txt.gz',
+        tempDir + 'calls/{sample}.bps.txt.gz',
+        tempDir + 'calls/{sample}.contigs.bam',
+        tempDir + 'calls/{sample}.discordant.txt.gz',
+        tempDir + 'calls/{sample}.log',
+        tempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        tempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        tempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
     output:
         workingDir + 'calls/{sample}.alignments.txt.gz',
         workingDir + 'calls/{sample}.bps.txt.gz',
@@ -111,18 +164,10 @@ rule svaba_call:
         workingDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
         workingDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
         workingDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
-    threads: nt
     params:
-        opath = workingDir + 'calls/',
-        epath = execDir + 'sv_callers/'
+        wDir = workingDir + 'calls/'
     shell:
-        'module load gcc/4.8.4;'
-        '{params.epath}svaba/bin/svaba run \
-            -p {threads} \
-            -G {input.ref} \
-            -t {input.t} \
-            -n {input.n} \
-            -a {params.opath}{wildcards.sample}'
+        'mv {input} {params.wDir}'
 
 # this rule allows custom filtering, in addition to relying on the built-in filtered files
 # rule svaba_basic_filter:
@@ -183,8 +228,10 @@ rule list_output_files:
         workingDir + 'calls/{sample}.svaba.somatic.sv.vcf'
     output:
         temp(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
     shell:
-        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
 
 rule merge_list:
     input:
@@ -192,5 +239,5 @@ rule merge_list:
     output:
         parentDir + 'SV_files_for_annotation_svaba.txt'
     shell:
-        'cat {input} | sed "1s/^/sample svaba\\n/" > {output}'
+        'cat {input} | sort | sed "1s/^/sample svaba\\n/" > {output}'
 

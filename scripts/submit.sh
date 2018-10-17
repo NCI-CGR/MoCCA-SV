@@ -1,7 +1,7 @@
 #!/bin/sh
 #$ -S /bin/sh
 #$ -j y
-#$ -q xlong.q
+#$ -q seq-calling.q
 
 # queue is currently hard-coded, because I can't make -q submit properly from the perl script.
 
@@ -28,9 +28,11 @@ log=${snake#*/}
 unset module  # this allows me to use -V in the qsub job below without getting the annoying bash_func_module errors in the output logs
 
 
-if [ "$threads" = "annotate" ]; then
+if [ "$threads" = "annOnly" ]; then
 	# conf=$configFile snakemake -s $execDir$snake --cluster "qsub -V -q $queue -j y -o $logDir" --jobs $numJobs --latency-wait 300 &> $logDir$log".out."$stamp
-	conf=$configFile snakemake -s $execDir$snake --cluster "qsub -V -q $queue -j y -o $logDir" --jobs $numJobs --latency-wait 300 &> $logDir$log".out."$stamp
+	conf=$configFile snakemake -s $execDir$snake --rerun-incomplete --cluster "qsub -V -q $queue -j y -o $logDir" --jobs $numJobs --latency-wait 300 &> $logDir$log".out."$stamp
+elif [ "$threads" = "annotate" ]; then
+	conf=$configFile snakemake --config inFile="${outDir}SV_files_for_annotation.txt" -s $execDir$snake --rerun-incomplete --cluster "qsub -V -q $queue -j y -o $logDir" --jobs $numJobs --latency-wait 300 &> $logDir$log".out."$stamp
 else
-	conf=$configFile snakemake -s $execDir$snake --cluster "qsub -V -q $queue -j y -o $logDir -pe by_node $threads" --jobs $numJobs --latency-wait 300 &> $logDir$log".out."$stamp
+	conf=$configFile snakemake -s $execDir$snake --rerun-incomplete --cluster "qsub -V -q $queue -j y -o $logDir -pe by_node $threads" --jobs $numJobs --latency-wait 300 &> $logDir$log".out."$stamp
 fi

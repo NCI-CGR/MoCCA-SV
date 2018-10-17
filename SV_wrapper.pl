@@ -314,6 +314,7 @@ if ($runMode !~ /annotateOnly/) {
 ######################## Add annotation ########################
 
 # prep annotation input file
+# TODO: consider prepping file for all callers that finish successfully, even if some are in error?
 my $arrSize = scalar @callers;
 if ($callerSuccessCount == $arrSize) {
     my %samples;
@@ -337,10 +338,15 @@ if ($callerSuccessCount == $arrSize) {
 }
 
 # kick off annotation pipeline if all callers have finished successfully
-if (($callerSuccessCount == $arrSize && $runMode =~ /callAndAnnotate/) || $runMode =~ /annotateOnly/) {
+if ($callerSuccessCount == $arrSize && $runMode =~ /callAndAnnotate/) {
     print $log "Adding annotation.\n";
     print $log "See logs/Snakefile_compare_and_annotate.out.".DATETIME." for details.\n";
     my $annoJobID = submit_workflow($log, "Snakefile\_compare\_and\_annotate", $execDir, $logDir, "annotate", $queue, $numJobs, $config, DATETIME);
+}
+elsif ($runMode =~ /annotateOnly/) {
+    print $log "Adding annotation.\n";
+    print $log "See logs/Snakefile_compare_and_annotate.out.".DATETIME." for details.\n";
+    my $annoJobID = submit_workflow($log, "Snakefile\_compare\_and\_annotate", $execDir, $logDir, "annOnly", $queue, $numJobs, $config, DATETIME);   
 }
 #TODO: add monitoring of the annotation snake jobs
 # note that currently I get all snake job IDs from the log files.  can I make snakemake output them and grab them from that log?

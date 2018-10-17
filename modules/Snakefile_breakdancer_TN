@@ -11,7 +11,7 @@ parentDir = config['outDir']
 workingDir = parentDir + 'breakdancer_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
-if config['genomeBuild']:
+if config['genomeBuild'] == 'hg19':
     chrPrefix = 'chr'
 else:
     chrPrefix = ''
@@ -192,8 +192,10 @@ rule list_output_files:
         workingDir + 'somatic_filtered/{sample}.out'
     output:
         temp(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
     shell:
-        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
 
 rule merge_list:
     input:
@@ -201,7 +203,7 @@ rule merge_list:
     output:
         parentDir + 'SV_files_for_annotation_breakdancer.txt'
     shell:
-        'cat {input} | sed "1s/^/sample breakdancer\\n/" > {output}'
+        'cat {input} | sort | sed "1s/^/sample breakdancer\\n/" > {output}'
 
 # rule check_logs:
 #     input:

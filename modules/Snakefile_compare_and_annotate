@@ -49,6 +49,7 @@ interchromPad = config['annotationParams']['interchromPadding']
 crossCallerOverlap = config['annotationParams']['crossCallerOverlap']
 genContextOverlap = config['annotationParams']['genomicContextOverlap']
 publicDataOverlap = config['annotationParams']['publicDataOverlap']
+inFile = config['annotateFile']  # should be overriden by command line config option when run in callAndAnnotate mode
 
 GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
 PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
@@ -61,13 +62,9 @@ genesPath = execDir + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else
 inDir = config['outDir']
 outDir = inDir + 'compare_and_annotate/'
 
-# make a text file with a header row:
-    # Sample Caller1 Caller2...
-    # A90H /path/and/file.f /path2/and/file2.f...
-
 inputDict = {}
 firstLine = ''
-with open(parentDir + 'SV_files_for_annotation.txt') as f:  # TODO add this file name to config file with a default setting
+with open(inFile) as f:
     firstLine = f.readline().split()[1:]
     if collections.Counter(firstLine) != collections.Counter(CALLERS):
         sys.exit('ERROR: input file headers do not match callers in config file.\n')
@@ -119,6 +116,8 @@ rule convert_to_bed:
         n[[ +- deletion
         ]]n -+ duplication/insertion
         [[n -- inversion
+
+    NOTE: at this step, should I exclude variants that align to the decoy genome (hs37d5)?
 
     '''
     input:
@@ -263,7 +262,9 @@ rule compare_intra_SVs:
     '''
     input:
         query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=inputDict.keys())
+        dbs = expand(outDir + '{caller}/bed_input/{{sample}}_intra.uniq.bed', caller=CALLERS)
+        # dbs = expand(outDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=inputDict.keys())
+        # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
         outDir + '{caller}/intrachromosomal/{sample}.compare'
     params:
@@ -328,27 +329,34 @@ rule pad_inter_chrom_ends:
 
 rule compare_inter_chr_end1:
     '''
+    NOTE: needed to remove -sorted to deal with hs37d5-aligned SVs.
     '''
     input:
         query = outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
+        dbs = expand(outDir + '{caller}/bed_input/{{sample}}_end1.uniq.padded.bed', caller=CALLERS)
+        # dbs = expand(outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
+        # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
         outDir + '{caller}/interchromosomal/{sample}_end1.compare'
     shell:
         'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
+        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
+        # 'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
 
 rule compare_inter_chr_end2:
     '''
+    NOTE: needed to remove -sorted to deal with hs37d5-aligned SVs.
     '''
     input:
         query = outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
+        dbs = expand(outDir + '{caller}/bed_input/{{sample}}_end2.uniq.padded.bed', caller=CALLERS)
+        # dbs = expand(outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
         outDir + '{caller}/interchromosomal/{sample}_end2.compare'
     shell:
         'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
+        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
+        # 'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
 
 rule parse_inter_comparison:
     '''

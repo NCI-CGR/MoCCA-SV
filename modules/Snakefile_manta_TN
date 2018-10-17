@@ -9,14 +9,17 @@ configfile: conf
 execDir = config['execDir']
 parentDir = config['outDir']
 workingDir = parentDir + 'manta_TN/'
+tempDir = config['tempDir'] + 'manta_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
 callers = config['callers']
 i = callers.index("manta")
 nt = config['maxThreads'][i]
 ref = config['refGenome']
+queue = config['queue']
 
-refNoExt = os.path.splitext(ref)[0]
+#refNoExt = os.path.splitext(ref)[0]
+refFile = os.path.basename(ref)
 
 # read in a file where each row has the pair name, tumor file name, normal file name
 # this could change depending on functionality required, eg
@@ -50,24 +53,26 @@ def get_normal_index(wildcards):
 
 rule all:
     input:
-        expand(workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/candidateSV.vcf.gz', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/diploidSV.vcf.gz', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi', sample=bamDict.keys()),
+        expand(workingDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
         expand(workingDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
         parentDir + 'SV_files_for_annotation_manta.txt'
 
-rule manta_index_ref:
+rule manta_softlink_ref_seq:
     input:
         ref
     output:
-        fai = ref + '.fai'
+        workingDir + 'refGenome/' + refFile
+    shell:
+        'ln -s {input} {output}'
+
+rule manta_index_ref:
+    input:
+        workingDir + 'refGenome/' + refFile
+    output:
+        fai = workingDir + 'refGenome/' + refFile + '.fai'
     shell:
         'module load samtools;'
         'samtools faidx {input};'
@@ -118,12 +123,12 @@ rule manta_create_run_script:
         tIndex = workingDir + 'filtered_bams/{sample}_T.bam.bai',
         n = workingDir + 'filtered_bams/{sample}_N.bam',
         nIndex = workingDir + 'filtered_bams/{sample}_N.bam.bai',
-        ref = ref,
-        fai = ref + '.fai'
+        ref = workingDir + 'refGenome/' + refFile,
+        fai = workingDir + 'refGenome/' + refFile + '.fai'
     output:
-        outFile = workingDir + '{sample}/runWorkflow.py'
+        outFile = tempDir + '{sample}/runWorkflow.py'
     params:
-        outParam = workingDir + '{sample}',
+        outParam = tempDir + '{sample}',
         path = execDir + 'sv_callers/'
     shell:
         '{params.path}manta-1.1.1.centos5_x86_64/bin/configManta.py \
@@ -133,8 +138,54 @@ rule manta_create_run_script:
             --runDir {params.outParam}'
 
 rule manta_call:
+    '''
+    There's a long lag time (>>300s) before any of the results/variants
+    files start to show up, which snakemake interprets as missing files.
+    So, include the pyflow log as input, so that snakemake won't stop
+    the pipeline after 300s.
+    '''
     input:
+        tempDir + '{sample}/runWorkflow.py'
+    output:
+        tempDir + '{sample}/workspace/pyflow.data/logs/pyflow_log.txt',
+        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        tempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        tempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        tempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        tempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        tempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        tempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'#,
+        # tempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        # tempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        # tempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        # tempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    threads: nt
+    params:
+        q = queue
+    shell:
+        '{input} -m sge -j {threads} -q {params.q}' 
+
+rule move_call_files_pt1:
+    input:
+        tempDir + '{sample}/runWorkflow.py'
+    output:
         workingDir + '{sample}/runWorkflow.py'
+    params:
+        wDir = workingDir + '{sample}/'
+    shell:
+        'mv {input} {params.wDir}'
+
+rule move_call_files_pt2:
+    input:
+        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        tempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        tempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        tempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        tempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        tempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        tempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
     output:
         workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
         workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
@@ -143,22 +194,37 @@ rule manta_call:
         workingDir + '{sample}/results/variants/diploidSV.vcf.gz',
         workingDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
         workingDir + '{sample}/results/variants/somaticSV.vcf.gz',
-        workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi',
+        workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
+    params:
+        wDir = workingDir + '{sample}/results/variants/'
+    shell:
+        'mv {input} {params.wDir}'
+
+rule move_call_files_pt3:
+    input:
+        tempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        tempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        tempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        tempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    output:
         workingDir + '{sample}/results/stats/alignmentStatsSummary.txt',
         workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
         workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
         workingDir + '{sample}/results/stats/svLocusGraphStats.tsv'
-    threads: nt
+    params:
+        wDir = workingDir + '{sample}/results/stats/'
     shell:
-        'python {input} -m sge -j {threads}' 
+        'mv {input} {params.wDir}'
 
 rule list_output_files:
     input:
         workingDir + '{sample}/results/variants/somaticSV.vcf.gz'
     output:
         temp(parentDir + 'SV_files_for_annotation_manta.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
     shell:
-        'echo {input} | tr " " "\n" | sed "s/^/{wildcards.sample} /" > {output}'
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
 
 rule merge_list:
     input:
@@ -166,7 +232,7 @@ rule merge_list:
     output:
         parentDir + 'SV_files_for_annotation_manta.txt'
     shell:
-        'cat {input} | sed "1s/^/sample manta\\n/" > {output}'
+        'cat {input} | sort | sed "1s/^/sample manta\\n/" > {output}'
 
 
 # rule manta_somatic_distributions:

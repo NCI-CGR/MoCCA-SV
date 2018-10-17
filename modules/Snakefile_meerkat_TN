@@ -14,7 +14,9 @@ parentDir = config['outDir']
 workingDir = parentDir + 'meerkat_TN/'
 dataDir = config['inDir']
 bamList = config['inFile']
-nt = config['maxThreads']
+callers = config['callers']
+i = callers.index("meerkat")
+nt = config['maxThreads'][i]
 ref = config['refGenome']
 
 refFile = os.path.basename(ref)  # get basename from ref variable
@@ -69,7 +71,8 @@ def get_normal_index(wildcards):
 
 rule all:
     input:
-        expand(workingDir + 'somatic_filtering/{sample}/{sample}_T.step7.variants', sample=bamDict.keys())
+        expand(workingDir + 'somatic_filtering/{sample}/{sample}_T.step7.variants', sample=bamDict.keys()),
+        parentDir + 'SV_files_for_annotation_meerkat.txt'
 
 
 # test with trio data and T/N data (one's with bwamem, one's with novo)
@@ -98,7 +101,7 @@ rule meerkat_softlink_ref_seq:
         if not perlOut:
             shell('ln -s {input} {output}')
         else:
-            print('ERROR: Perl module Bio::DB::Fasta not found.')
+            sys.exit('ERROR: Perl module Bio::DB::Fasta not found.')
 
 # rule meerkat_perl_index_ref_seq:  # this is done when meerkat.pl is run
 #     input:
@@ -217,8 +220,6 @@ rule meerkat_t_pre_process_is:
     params:
         scriptsPath = execDir + 'sv_callers/Meerkat/scripts/',
         bwaPath = workingDir + 'refGenome/bwa_idx/' + refFile
-        # -W flag above gives path to bwa 0.6.2, which is an older version specified as a requirement in the meerkat documentation
-        #libPath = execDir + 'sv_callers/Meerkat/src/mybamtools/lib:$LD_LIBRARY_PATH'
     output:
         workingDir + 'calling/{sample}/{sample}_T.blacklist.gz',
         workingDir + 'calling/{sample}/{sample}_T.isinfo',
@@ -233,8 +234,7 @@ rule meerkat_t_pre_process_is:
     shell:
         'module load perl gcc samtools/0.1.19 blast blat R;'
         'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P is'
-        #'export LD_LIBRARY_PATH={params.libPath};'  # weirdly, this doesn't seem to stick - put in submit.sh
-        #'echo $LD_LIBRARY_PATH > {params.outPath}libpath.txt;'
+        # 'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 0 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P is' # for BWA-MEM aligned genomes
 
 rule meerkat_t_pre_process_cl:
     '''
@@ -285,8 +285,8 @@ rule meerkat_t_pre_process_cl:
         'module load perl gcc samtools/0.1.19 blast blat R;'
         'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl1 -t {threads};'
         'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl2'
-        #'export LD_LIBRARY_PATH={params.libPath};'  # weirdly, this doesn't seem to stick - put in submit.sh
-        #'echo $LD_LIBRARY_PATH > {params.outPath}libpath.txt;'
+        # 'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 0 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl1 -t {threads};'
+        # 'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 0 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl2'
 
 rule meerkat_n_pre_process_is:
     '''
@@ -320,6 +320,7 @@ rule meerkat_n_pre_process_is:
     shell:
         'module load perl gcc samtools/0.1.19 blast blat R;'
         'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P is'
+        # 'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 0 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P is'
         # run each sub-stage of pre_processes.pl separately, to utilize multi-threading capability in cl1
 
 
@@ -360,6 +361,8 @@ rule meerkat_n_pre_process_cl:
         'module load perl gcc samtools/0.1.19 blast blat R;'
         'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl1 -t {threads};'
         'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 1 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl2'
+        # 'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 0 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl1 -t {threads};'
+        # 'perl {params.scriptsPath}pre_process.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.bam} -k 1500 -l 0 -I {params.bwaPath} -A {input.fai} -s 20 -q 15 -P cl2'
 
 
 # logs $ tail snakejob.meerkat_n_pre_process_cl2.0.sh.o9032524 (t also)
@@ -459,6 +462,14 @@ rule meerkat_t_call_SVs:
         'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg2;'
         'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P srd;'
         'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P rf'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P dc;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P cl;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P mpd;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg1 -t {threads};'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg2;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P srd;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.tLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P rf'
+
 
 rule meerkat_n_call_SVs:
     '''
@@ -525,6 +536,13 @@ rule meerkat_n_call_SVs:
         'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg2;'
         'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P srd;'
         'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -s 20 -p 3 -a 0 -u 1 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P rf'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P dc;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P cl;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P mpd;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg1 -t {threads};'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P alg2;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P srd;'
+        # 'perl {params.scriptsPath}meerkat.pl -W /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/bwa-0.6.2 -b {input.nLink} -l 0 -s 20 -p 3 -o 1 -m 0 -d 5 -c 5 -F {params.fastaPath} -Q 10 -P rf'
 
 rule meerkat_t_mechanism:
     '''
@@ -784,3 +802,21 @@ rule meerkat_filter_somatic_7:
             -R /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/annotation/UCSC_track_data/hg19_RepeatMasker.bed \
             -d 40 \
             -t 20'
+
+rule list_output_files:
+    input:
+        workingDir + 'somatic_filtering/{sample}/{sample}_T.step7.variants'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_meerkat.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
+    shell:
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
+
+rule merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_meerkat.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_meerkat.txt'
+    shell:
+        'cat {input} | sort | sed "1s/^/sample meerkat\\n/" > {output}'

@@ -2,6 +2,8 @@
 #$ -S /bin/sh
 #$ -j y
 
+# to run: qsub -q xlong.q -o /DCEG/Projects/WGS_chordoma/CGR_reanalysis/primary/struct_vars_052518/ SV_wrapper.sh /DCEG/Projects/WGS_chordoma/CGR_reanalysis/primary/struct_vars_052518/config_annotate.yaml
+
 configFile=$1
 
 if [ $# -eq 0 ]; then
@@ -18,10 +20,10 @@ else
     cluster=$(awk '($0~/^clusterMode/){print $2}' $configFile | sed "s/'//g")
 
     if [ "$cluster" = "SGE" ]; then
-	    source /etc/profile.d/modules.sh
-	    module load sge perl
-	    perl $execDir/SV_wrapper.pl $configFile
-	elif [ "$cluster" = "local" ]; then
-		echo "TODO: write a tiny wrapper to kick off applicable snake jobs assuming one local core"
-	fi
+        source /etc/profile.d/modules.sh
+        module load sge perl
+        perl $execDir/SV_wrapper.pl $configFile
+    elif [ "$cluster" = "local" ]; then
+        echo "TODO: write a tiny wrapper to kick off applicable snake jobs assuming one local core"
+    fi
 fi

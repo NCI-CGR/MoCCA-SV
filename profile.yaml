@@ -1,8 +1,0 @@
-# currently not used!
-use-singularity: true
-singularity-prefix: blah
-singularity-args: '-B $PWD/data --pwd /data'  # example from biowulf
-jobs: 40
-latency-wait: 300
-cluster: 'qsub -V -q {cluster.queue} -j y -o {?}'
-cluster_multithreaded: 'qsub -V -q {cluster.queue} -j y -o {?} -pe by_node {cluster.threads}'

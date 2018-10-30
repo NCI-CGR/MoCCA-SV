@@ -1,7 +1,0 @@
-channels:
-  - daler  # 0.2.5 is available on standard channels but 0.2.6 isn't
-  - bioconda
-  - conda-forge
-  - defaults
-dependencies:
-  - tabix=0.2.6

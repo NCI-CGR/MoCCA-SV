@@ -1,7 +1,0 @@
-channels:
-  - anaconda
-  - bioconda
-  - conda-forge
-  - defaults
-dependencies:
-  - libgcc=7.2.0

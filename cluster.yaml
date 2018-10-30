@@ -1,9 +1,0 @@
-# currently not used!
-# can you list more than one queue?
-# is there a big advantage here vs. putting all in config.yaml? -> easier to sub out for different HPC systems?
-__default__:
-    queue: xlong.q
-    #shell: /bin/sh
-parallel:
-    queue: xlong.q
-    threads: 8

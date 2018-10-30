@@ -1,7 +1,0 @@
-channels:
-  - rwest
-  - bioconda
-  - conda-forge
-  - defaults
-dependencies:
-  - libgcc=4.8.4

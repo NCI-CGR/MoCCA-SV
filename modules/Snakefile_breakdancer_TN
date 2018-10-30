@@ -4,13 +4,8 @@ import os
 
 # snakemake -s modules/Snakefile_breakdancer_TN --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 8" --jobs 100 --latency-wait 300
 
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
-parentDir = config['outDir']
-workingDir = parentDir + 'breakdancer_TN/'
-dataDir = config['inDir']
-bamList = config['inFile']
+# will need to convert to relative paths for singularity?
+breakdancerWkngDir = parentDir + 'breakdancer_TN/'
 if config['genomeBuild'] == 'hg19':
     chrPrefix = 'chr'
 else:
@@ -21,43 +16,6 @@ else:
 METRICS = ['Score', 'num_Reads']  # parameters to plot
 CHR = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y']
 
-# read in a file where each row has the pair name, tumor file name, normal file name
-# this could change depending on functionality required, eg
-# if tumor and normal bams have the same name but are in different directories
-# (currently assuming same directory for T and N)
-bamDict = {}
-with open(bamList) as f:
-    for line in f:
-        (pair, tumor, normal) = line.split()
-        bamDict[pair] = (dataDir + tumor, dataDir + normal)
-
-
-def get_tumor_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor
-
-
-def get_tumor_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor + '.bai'
-
-
-def get_normal_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal
-
-
-def get_normal_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal + '.bai'
-
-rule all:
-    input:
-        expand(workingDir + 'config/{sample}.config.qc', sample=bamDict.keys()),
-        expand(workingDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
-        workingDir + 'summary.txt',
-        parentDir + 'SV_files_for_annotation_breakdancer.txt'
-
 rule breakdancer_config:
     input:
         t = get_tumor_bam,
@@ -65,24 +23,26 @@ rule breakdancer_config:
         n = get_normal_bam,
         nIndex = get_normal_index
     output:
-        workingDir + 'config/{sample}.config'
+        breakdancerWkngDir + 'config/{sample}.config'
     params:
         path = execDir + 'sv_callers/'
+    singularity:
+        'shub://bballew/<something>:breakdancer_1-3-6.simg'
     shell:
         'module load samtools/1.3.1 perl/5.18.0;'
-        'perl {params.path}breakdancer/perl/bam2cfg.pl -g -h {input.t} {input.n} > {output}'
+        'perl /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/breakdancer/perl/bam2cfg.pl -g -h {input.t} {input.n} > {output}'
         # can't figure out how to get the histograms to show up somewhere other than the directory in which this is run
 
 rule breakdancer_bam_qc:
     input:
-        c = workingDir + 'config/{sample}.config',
+        c = breakdancerWkngDir + 'config/{sample}.config',
         t = get_tumor_bam,
         n = get_normal_bam
     output:
-        o = workingDir + 'config/{sample}.config.qc',
-        t1 = temp(workingDir + 'config/{sample}.t1'),
-        t2 = temp(workingDir + 'config/{sample}.t2'),
-        t3 = temp(workingDir + 'config/{sample}.t3')
+        o = breakdancerWkngDir + 'config/{sample}.config.qc',
+        t1 = temp(breakdancerWkngDir + 'config/{sample}.t1'),
+        t2 = temp(breakdancerWkngDir + 'config/{sample}.t2'),
+        t3 = temp(breakdancerWkngDir + 'config/{sample}.t3')
     params:
         path = execDir + 'scripts/'
     shell:
@@ -94,37 +54,37 @@ rule breakdancer_bam_qc:
 
 rule breakdancer_run_per_chrom:
     input:
-        workingDir + 'config/{sample}.config'
+        breakdancerWkngDir + 'config/{sample}.config'
     output:
-        workingDir + 'calls/chrom{chr}.{sample}.out'
+        breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
     params:
         chrom = chrPrefix + '{chr}',
         path = execDir + 'sv_callers/'
     shell:
         'module load samtools/1.3.1 perl/5.18.0;'
-        '{params.path}breakdancer/build/bin/breakdancer-max {input} -o {params.chrom} > {output}'
+        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/breakdancer/build/bin/breakdancer-max {input} -o {params.chrom} > {output}'
 
 rule breakdancer_run_translocations:
     input:
-        workingDir + 'config/{sample}.config'
+        breakdancerWkngDir + 'config/{sample}.config'
     output:
-        workingDir + 'calls/transl.{sample}.out'
+        breakdancerWkngDir + 'calls/transl.{sample}.out'
     params:
         path = execDir + 'sv_callers/'
     shell:
         'module load samtools/1.3.1 perl/5.18.0;'
-        '{params.path}breakdancer/build/bin/breakdancer-max {input} -t > {output}'
+        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/breakdancer/build/bin/breakdancer-max {input} -t > {output}'
 
 rule breakdancer_combine_results:
     input:
-        i1 = expand(workingDir + 'calls/chrom{chr}.{{sample}}.out', chr=CHR),
+        i1 = expand(breakdancerWkngDir + 'calls/chrom{chr}.{{sample}}.out', chr=CHR),
         # double curly braces means it won't expand that one here, just in all or whatever other rule expands it (in this case, breakdancer_summary)
-        i2 = workingDir + 'calls/transl.{sample}.out'
+        i2 = breakdancerWkngDir + 'calls/transl.{sample}.out'
     output:
-        o = workingDir + 'calls/all.{sample}.out',
-        t1 = temp(workingDir + 'calls/all.{sample}.temp'),
-        t2 = temp(workingDir + 'calls/all.{sample}.temp.nohead'),
-        t3 = temp(workingDir + 'calls/header.{sample}.temp')
+        o = breakdancerWkngDir + 'calls/all.{sample}.out',
+        t1 = temp(breakdancerWkngDir + 'calls/all.{sample}.temp'),
+        t2 = temp(breakdancerWkngDir + 'calls/all.{sample}.temp.nohead'),
+        t3 = temp(breakdancerWkngDir + 'calls/header.{sample}.temp')
     shell:
         'grep "^#Chr" {input.i2} > {output.t3};'
         'cat {input.i1} {input.i2} >> {output.t1};'
@@ -134,9 +94,9 @@ rule breakdancer_combine_results:
 rule breakdancer_detect_somatic:
     input:
         n = get_normal_bam,
-        i = workingDir + 'calls/all.{sample}.out'
+        i = breakdancerWkngDir + 'calls/all.{sample}.out'
     output:
-        workingDir + 'somatic/{sample}.out'
+        breakdancerWkngDir + 'somatic/{sample}.out'
     params:
         path = execDir + 'scripts/'
     shell:
@@ -144,9 +104,9 @@ rule breakdancer_detect_somatic:
 
 rule breakdancer_somatic_distributions:
     input:
-        workingDir + 'somatic/{sample}.out'
+        breakdancerWkngDir + 'somatic/{sample}.out'
     output:
-        workingDir + 'plots/{sample}.{metric}.png'
+        breakdancerWkngDir + 'plots/{sample}.{metric}.png'
         # note that an underscore between sample and metric caused a problem when there was also an underscore in metric!
     params:
         path = execDir + 'scripts/',
@@ -167,10 +127,13 @@ rule breakdancer_somatic_distributions:
 
 # put filtering thresholds into config file?
 rule breakdancer_basic_filtering:
+    '''
+    Don't use this file for further steps for now.  Let the end user do their own filtering as desired.
+    '''
     input:
-        workingDir + 'somatic/{sample}.out'
+        breakdancerWkngDir + 'somatic/{sample}.out'
     output:
-        workingDir + 'somatic_filtered/{sample}.out'
+        breakdancerWkngDir + 'somatic_filtered/{sample}.out'
     params:
         path = execDir + 'scripts/',
         qual_threshold = 30,
@@ -180,16 +143,16 @@ rule breakdancer_basic_filtering:
 
 rule breakdancer_summary:
     input:
-        expand(workingDir + 'somatic_filtered/{sample}.out', sample=bamDict.keys())
+        expand(breakdancerWkngDir + 'somatic/{sample}.out', sample=bamDict.keys())
     output:
-        workingDir + 'summary.txt'
+        breakdancerWkngDir + 'summary.txt'
     shell:
-        'grep -vc "^#" {input} >> {output}'
-        # weirdly, this throws an error if the grep result is 0
+        'grep -vc "^#" {input} >> {output} || true'
+        # this throws an error if the grep result is 0: grep exit code 0=match, 1=no match, 2=error.  So "|| true" will circumvent this for snakemake.
 
 rule list_output_files:
     input:
-        workingDir + 'somatic_filtered/{sample}.out'
+        breakdancerWkngDir + 'somatic/{sample}.out'
     output:
         temp(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt')
     params:
@@ -199,11 +162,15 @@ rule list_output_files:
 
 rule merge_list:
     input:
-        expand(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt', sample=bamDict.keys())
+        conf = expand(breakdancerWkngDir + 'config/{sample}.config.qc', sample=bamDict.keys()),
+        plots = expand(breakdancerWkngDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
+        summ = breakdancerWkngDir + 'summary.txt',
+        # don't actually need all these above inputs for this step, but I want a uniform rule all with just the last file so these are here now.
+        files = expand(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt', sample=bamDict.keys())
     output:
         parentDir + 'SV_files_for_annotation_breakdancer.txt'
     shell:
-        'cat {input} | sort | sed "1s/^/sample breakdancer\\n/" > {output}'
+        'cat {input.files} | sort | sed "1s/^/sample breakdancer\\n/" > {output}'
 
 # rule check_logs:
 #     input:

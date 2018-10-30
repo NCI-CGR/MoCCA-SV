@@ -38,18 +38,31 @@ NOTES:
 
 import os
 import collections
+import pandas as pd
 
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
 genomeBuild = config['genomeBuild']
-parentDir = config['outDir']
-CALLERS = config['callers']
+annInDir = config['outDir'].rstrip('/') + '/'  # ensure one trailing slash
+annOutDir = annInDir + 'compare_and_annotate/'
 interchromPad = config['annotationParams']['interchromPadding']
 crossCallerOverlap = config['annotationParams']['crossCallerOverlap']
 genContextOverlap = config['annotationParams']['genomicContextOverlap']
 publicDataOverlap = config['annotationParams']['publicDataOverlap']
-inFile = config['annotateFile']  # should be overriden by command line config option when run in callAndAnnotate mode
+if annotateOnly:
+    annFile = config['annotateFile']
+#     inputDict = {}
+#     firstLine = ''
+#     with open(annFile) as f:
+#         firstLine = f.readline().split()[1:]
+#         if collections.Counter(firstLine) != collections.Counter(CALLERS):
+#             sys.exit('ERROR: input file headers do not match callers in config file.\n')
+#         for line in f:
+#             l = line.split()
+#             inputDict[l[0]] = l[1:]
+
+# def get_input_file(wildcards):
+#     l = inputDict[wildcards.sample]
+#     i = firstLine.index(wildcards.caller)
+#     return l[i]
 
 GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
 PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
@@ -59,28 +72,6 @@ genomicContextPath = execDir + 'annotation/genomic_context/hg19_chr/' if genomeB
 publicDatasetsPath = execDir + 'annotation/public_datasets/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/public_datasets/GRCh37_no_chr/'
 genesPath = execDir + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
 
-inDir = config['outDir']
-outDir = inDir + 'compare_and_annotate/'
-
-inputDict = {}
-firstLine = ''
-with open(inFile) as f:
-    firstLine = f.readline().split()[1:]
-    if collections.Counter(firstLine) != collections.Counter(CALLERS):
-        sys.exit('ERROR: input file headers do not match callers in config file.\n')
-    for line in f:
-        l = line.split()
-        inputDict[l[0]] = l[1:]
-
-def get_input_file(wildcards):
-    l = inputDict[wildcards.sample]
-    i = firstLine.index(wildcards.caller)
-    return l[i]
-
-rule all:
-    input:
-        expand(outDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=inputDict.keys()),
-        expand(outDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=inputDict.keys())
 
 rule convert_to_bed:
     '''
@@ -121,16 +112,32 @@ rule convert_to_bed:
 
     '''
     input:
-        i = get_input_file
+        i = annFile if annotateOnly else parentDir + 'SV_files_for_annotation.txt'#,
+        #f = get_input_file
     output:
-        outDir + '{caller}/bed_input/{sample}_intra.bed',
-        outDir + '{caller}/bed_input/{sample}_end1.bed',
-        outDir + '{caller}/bed_input/{sample}_end2.bed'
+        annOutDir + '{caller}/bed_input/{sample}_intra.bed',
+        annOutDir + '{caller}/bed_input/{sample}_end1.bed',
+        annOutDir + '{caller}/bed_input/{sample}_end2.bed'
     params:
         path = execDir + 'scripts/',
-        outDir = outDir + '{caller}/bed_input/'
-    shell:
-        '{params.path}{wildcards.caller}_to_bed.sh {input.i} {wildcards.sample} {params.outDir}'
+        annOutDir = annOutDir + '{caller}/bed_input/'
+    run:
+        # this remakes the dict for every caller/sample combo, which is terribly inefficient.
+        # however, doing this outside of the rule means that it will look for SV_files_for_annotation.txt
+        # before it is actually created, which is also a problem.
+        inputDict = {}
+        firstLine = ''
+        with open(input.i) as f:
+            firstLine = f.readline().split()[1:]
+            if collections.Counter(firstLine) != collections.Counter(CALLERS):
+                sys.exit('ERROR: input file headers do not match callers in config file.\n')
+            for line in f:
+                l = line.split()
+                inputDict[l[0]] = l[1:]
+
+        l = inputDict[wildcards.sample]
+        i = firstLine.index(wildcards.caller)
+        shell('{params.path}{wildcards.caller}_to_bed.sh ' + l[i] + ' {wildcards.sample} {params.annOutDir}')
 
 rule remove_identical_calls:
     '''
@@ -147,13 +154,13 @@ rule remove_identical_calls:
     only if BOTH ends are non-unique.
     '''
     input:
-        sameChrom = outDir + '{caller}/bed_input/{sample}_intra.bed',
-        end1 = outDir + '{caller}/bed_input/{sample}_end1.bed',
-        end2 = outDir + '{caller}/bed_input/{sample}_end2.bed'
+        sameChrom = annOutDir + '{caller}/bed_input/{sample}_intra.bed',
+        end1 = annOutDir + '{caller}/bed_input/{sample}_end1.bed',
+        end2 = annOutDir + '{caller}/bed_input/{sample}_end2.bed'
     output:
-        sameChrom = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
-        end1 = outDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
-        end2 = outDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
+        sameChrom = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
+        end2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
     run:
         shell('sort -k 1,1 -k2,2n -k3,3n --stable --unique {input.sameChrom} > {output.sameChrom}')
         l1 = sum(1 for line in open(input.end1))
@@ -177,9 +184,9 @@ rule remove_identical_calls:
 #     added to the modules.
 #     '''
 #     input:
-#         outDir + '{caller}/bed_input/{sample}.uniq.bed'
+#         annOutDir + '{caller}/bed_input/{sample}.uniq.bed'
 #     output:
-#         outDir + '{caller}/bed_input/{sample}.self.compare'
+#         annOutDir + '{caller}/bed_input/{sample}.self.compare'
 #     shell:
 #         'module load bedtools/2.26.0;'
 #         'intersectBed \
@@ -200,9 +207,9 @@ rule remove_identical_calls:
 #     both to chr1 123 346).
 #     '''
 #     input:
-#         outDir + '{caller}/bed_input/{sample}.self.compare'
+#         annOutDir + '{caller}/bed_input/{sample}.self.compare'
 #     output:
-#         outDir + '{caller}/bed_input/{sample}.outermost.bed'
+#         annOutDir + '{caller}/bed_input/{sample}.outermost.bed'
 #     run:
 #         svDict = {}
 #         with open(str(input), 'r') as f:
@@ -232,9 +239,9 @@ rule remove_identical_calls:
 #     overlapping calls.
 #     '''
 #     input:
-#         outDir + '{caller}/bed_input/{sample}.outermost.bed'
+#         annOutDir + '{caller}/bed_input/{sample}.outermost.bed'
 #     output:
-#         outDir + '{caller}/bed_input/{sample}.collapsed.bed'
+#         annOutDir + '{caller}/bed_input/{sample}.collapsed.bed'
 #     shell:
 #         'sort -k1,1 -k2,2n -k3,3n --stable --unique {input} > {output}'
 
@@ -261,12 +268,12 @@ rule compare_intra_SVs:
     I want.
     '''
     input:
-        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{{sample}}_intra.uniq.bed', caller=CALLERS)
-        # dbs = expand(outDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=inputDict.keys())
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_intra.uniq.bed', caller=CALLERS)
+        # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=inputDict.keys())
         # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
-        outDir + '{caller}/intrachromosomal/{sample}.compare'
+        annOutDir + '{caller}/intrachromosomal/{sample}.compare'
     params:
         overlap = crossCallerOverlap
     shell:
@@ -285,9 +292,9 @@ rule parse_intra_comparison:
     #TODO think about whether to count hits, or just 1 for any overlap, 0 for none.
     '''
     input:
-        outDir + '{caller}/intrachromosomal/{sample}.compare'
+        annOutDir + '{caller}/intrachromosomal/{sample}.compare'
     output:
-        outDir + '{caller}/intrachromosomal/{sample}.compare.summary'
+        annOutDir + '{caller}/intrachromosomal/{sample}.compare.summary'
     run:
         svDict = {}
         with open(str(input), 'r') as f:
@@ -313,11 +320,11 @@ rule pad_inter_chrom_ends:
     '''
     '''
     input:
-        end1 = outDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
-        end2 = outDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
+        end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
+        end2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
     output:
-        end1 = outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
-        end2 = outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed'
+        end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        end2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed'
     params:
         genome = execDir + 'annotation/human_g1k_v37.genome',
         pad = interchromPad,
@@ -332,12 +339,12 @@ rule compare_inter_chr_end1:
     NOTE: needed to remove -sorted to deal with hs37d5-aligned SVs.
     '''
     input:
-        query = outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{{sample}}_end1.uniq.padded.bed', caller=CALLERS)
-        # dbs = expand(outDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
+        query = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_end1.uniq.padded.bed', caller=CALLERS)
+        # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
         # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
-        outDir + '{caller}/interchromosomal/{sample}_end1.compare'
+        annOutDir + '{caller}/interchromosomal/{sample}_end1.compare'
     shell:
         'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
@@ -348,11 +355,11 @@ rule compare_inter_chr_end2:
     NOTE: needed to remove -sorted to deal with hs37d5-aligned SVs.
     '''
     input:
-        query = outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
-        dbs = expand(outDir + '{caller}/bed_input/{{sample}}_end2.uniq.padded.bed', caller=CALLERS)
-        # dbs = expand(outDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
+        query = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
+        dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_end2.uniq.padded.bed', caller=CALLERS)
+        # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
-        outDir + '{caller}/interchromosomal/{sample}_end2.compare'
+        annOutDir + '{caller}/interchromosomal/{sample}_end2.compare'
     shell:
         'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
@@ -386,10 +393,10 @@ rule parse_inter_comparison:
     bedtools pairtopair could be useful here, but requires bedpe format.
     '''
     input:
-        end1 = outDir + '{caller}/interchromosomal/{sample}_end1.compare',
-        end2 = outDir + '{caller}/interchromosomal/{sample}_end2.compare'
+        end1 = annOutDir + '{caller}/interchromosomal/{sample}_end1.compare',
+        end2 = annOutDir + '{caller}/interchromosomal/{sample}_end2.compare'
     output:
-        outDir + '{caller}/interchromosomal/{sample}.compare.summary'
+        annOutDir + '{caller}/interchromosomal/{sample}.compare.summary'
     run:
         svDict = {}
         with open(str(input.end1), 'r') as f1:
@@ -434,10 +441,10 @@ rule query_genomic_context:
     Output format: chr start end line_num count_of_intersecting_SVs
     '''
     input:
-        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
         db = genomicContextPath + '{genomicContextFile}.bed'
     output:
-        outDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
+        annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
     params:
         overlap = genContextOverlap
     shell:
@@ -516,10 +523,10 @@ rule query_public_datasets:
     #TODO: think about whether there are any other fields that would be helpful here
     '''
     input:
-        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
         db = publicDatasetsPath + '{publicDataFile}.bed'
     output:
-        outDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
+        annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
     params:
         overlap = publicDataOverlap
     shell:
@@ -537,9 +544,9 @@ rule query_public_datasets:
 
 rule format_genomic_context_counts:
     input:
-        outDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
+        annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
     output:
-        temp(outDir + '{caller}/intrachromosomal/cut-{genomicContextFile}_and_{sample}')
+        temp(annOutDir + '{caller}/intrachromosomal/cut-{genomicContextFile}_and_{sample}')
     params:
         header = '{genomicContextFile}'
     shell:
@@ -550,9 +557,9 @@ rule format_public_data_hits:
     '''
     '''
     input:
-        outDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
+        annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
     output:
-        temp(outDir + '{caller}/intrachromosomal/parse-{publicDataFile}_and_{sample}')
+        temp(annOutDir + '{caller}/intrachromosomal/parse-{publicDataFile}_and_{sample}')
     run:
         svDict = {}
         with open(str(input), 'r') as f:
@@ -577,19 +584,19 @@ rule find_intersected_genes:
     #TODO do for intra and inter (need to think about how inter would work...list all genes affected?  just the fused genes?)
     '''
     input:
-        query = outDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
         db = genesPath + '{geneset}.bed'
     output:
-        outDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
+        annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
     shell:
         'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.db} -sorted -wao > {output}'
 
 rule format_intersected_genes:
     input:
-        outDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
+        annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
     output:
-        temp(outDir + '{caller}/intrachromosomal/gene-{geneset}_and_{sample}')
+        temp(annOutDir + '{caller}/intrachromosomal/gene-{geneset}_and_{sample}')
     run:
         svDict = {}
         with open(str(input), 'r') as f:
@@ -611,25 +618,25 @@ rule format_intersected_genes:
 
 rule add_annotation:
     input:
-        db1 = expand(outDir + '{{caller}}/intrachromosomal/cut-{genomicContextFile}_and_{{sample}}', genomicContextFile=GENOMIC_CONTEXT_BEDS),
-        db2 = expand(outDir + '{{caller}}/intrachromosomal/parse-{publicDataFile}_and_{{sample}}', publicDataFile=PUBLIC_DATA_BEDS),
-        db3 = expand(outDir + '{{caller}}/intrachromosomal/gene-{geneset}_and_{{sample}}', geneset=GENESET_BEDS),
-        summ = outDir + '{caller}/intrachromosomal/{sample}.compare.summary'
+        db1 = expand(annOutDir + '{{caller}}/intrachromosomal/cut-{genomicContextFile}_and_{{sample}}', genomicContextFile=GENOMIC_CONTEXT_BEDS),
+        db2 = expand(annOutDir + '{{caller}}/intrachromosomal/parse-{publicDataFile}_and_{{sample}}', publicDataFile=PUBLIC_DATA_BEDS),
+        db3 = expand(annOutDir + '{{caller}}/intrachromosomal/gene-{geneset}_and_{{sample}}', geneset=GENESET_BEDS),
+        summ = annOutDir + '{caller}/intrachromosomal/{sample}.compare.summary'
     output:
-        # outDir + '{caller}/intrachromosomal/annotated_{sample}.compare.summary'
-        outDir + '{caller}/intrachromosomal/{sample}_annotated_comparison'
+        # annOutDir + '{caller}/intrachromosomal/annotated_{sample}.compare.summary'
+        annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison'
     shell:
         'paste {input.summ} {input.db1} {input.db2} {input.db3} | sed \"s/-1/\./\" > {output}'
 #TODO: confirm by hand that these intermediate files are all sorted by line number!
 
 # # rule add_counts_to_orig:
 # #     input:
-# #         outDir + '{caller}/{sample}.compare.summary'
-# #         outDir + 'delly/{sample}_all.txt'
-# #         f = inDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
-# #         f = inDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
-# #         f = inDir + 'svaba_TN/calls/{sample}.svaba.somatic.sv.vcf' if svaba else ''
+# #         annOutDir + '{caller}/{sample}.compare.summary'
+# #         annOutDir + 'delly/{sample}_all.txt'
+# #         f = annInDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
+# #         f = annInDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
+# #         f = annInDir + 'svaba_TN/calls/{sample}.svaba.somatic.sv.vcf' if svaba else ''
 # #     output:
 # #         df
 # #     shell:
-# #         awk '{FS=OFS="\t"}{print $0, NR}' $inFile
+# #         awk '{FS=OFS="\t"}{print $0, NR}' $annFile

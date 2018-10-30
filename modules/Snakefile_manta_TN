@@ -4,75 +4,37 @@ import os
 
 # snakemake -s Snakefile_manta_somatic --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y" --jobs 100 --latency-wait 300
 
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
-parentDir = config['outDir']
-workingDir = parentDir + 'manta_TN/'
-tempDir = config['tempDir'] + 'manta_TN/'
-dataDir = config['inDir']
-bamList = config['inFile']
-callers = config['callers']
-i = callers.index("manta")
-nt = config['maxThreads'][i]
-ref = config['refGenome']
+mantaWkngDir = parentDir + 'manta_TN/'
+mantaTempDir = config['tempDir'].rstrip('/') + 'manta_TN/'
+i = CALLERS.index("manta")
+mantaNt = config['maxThreads'][i]
 queue = config['queue']
 
 #refNoExt = os.path.splitext(ref)[0]
 refFile = os.path.basename(ref)
 
-# read in a file where each row has the pair name, tumor file name, normal file name
-# this could change depending on functionality required, eg
-# if tumor and normal bams have the same name but are in different directories
-# (currently assuming same directory for T and N)
-bamDict = {}
-with open(bamList) as f:
-    for line in f:
-        (pair, tumor, normal) = line.split()
-        bamDict[pair] = (dataDir + tumor, dataDir + normal)
-
-
-def get_tumor_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor
-
-
-def get_tumor_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor + '.bai'
-
-
-def get_normal_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal
-
-
-def get_normal_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal + '.bai'
-
-rule all:
-    input:
-        expand(workingDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
-        expand(workingDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
-        parentDir + 'SV_files_for_annotation_manta.txt'
+# rule all:
+#     input:
+#         expand(mantaWkngDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
+#         expand(mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
+#         expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
+#         expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
+#         expand(mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
+#         parentDir + 'SV_files_for_annotation_manta.txt'
 
 rule manta_softlink_ref_seq:
     input:
         ref
     output:
-        workingDir + 'refGenome/' + refFile
+        mantaWkngDir + 'refGenome/' + refFile
     shell:
         'ln -s {input} {output}'
 
 rule manta_index_ref:
     input:
-        workingDir + 'refGenome/' + refFile
+        mantaWkngDir + 'refGenome/' + refFile
     output:
-        fai = workingDir + 'refGenome/' + refFile + '.fai'
+        fai = mantaWkngDir + 'refGenome/' + refFile + '.fai'
     shell:
         'module load samtools;'
         'samtools faidx {input};'
@@ -81,7 +43,7 @@ rule manta_filter_t_bams:
     input:
         t = get_tumor_bam
     output:
-        filtT = workingDir + 'filtered_bams/{sample}_T.bam'
+        filtT = mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     params:
         path = execDir + 'scripts/'
     shell:
@@ -92,7 +54,7 @@ rule manta_filter_n_bams:
     input:
         n = get_normal_bam
     output:
-        filtN = workingDir + 'filtered_bams/{sample}_N.bam'
+        filtN = mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     params:
         path = execDir + 'scripts/'
     shell:
@@ -101,37 +63,37 @@ rule manta_filter_n_bams:
 
 rule manta_index_filtered_t_bams:
     input:
-        filtT = workingDir + 'filtered_bams/{sample}_T.bam'
+        filtT = mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     output:
-        workingDir + 'filtered_bams/{sample}_T.bam.bai'
+        mantaWkngDir + 'filtered_bams/{sample}_T.bam.bai'
     shell:
         'module load samtools;'
         'samtools index {input.filtT}'
 
 rule manta_index_filtered_n_bams:
     input:
-        filtN = workingDir + 'filtered_bams/{sample}_N.bam'
+        filtN = mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     output:
-        workingDir + 'filtered_bams/{sample}_N.bam.bai'
+        mantaWkngDir + 'filtered_bams/{sample}_N.bam.bai'
     shell:
         'module load samtools;'
         'samtools index {input.filtN}'
 
 rule manta_create_run_script:
     input:
-        t = workingDir + 'filtered_bams/{sample}_T.bam',
-        tIndex = workingDir + 'filtered_bams/{sample}_T.bam.bai',
-        n = workingDir + 'filtered_bams/{sample}_N.bam',
-        nIndex = workingDir + 'filtered_bams/{sample}_N.bam.bai',
-        ref = workingDir + 'refGenome/' + refFile,
-        fai = workingDir + 'refGenome/' + refFile + '.fai'
+        t = mantaWkngDir + 'filtered_bams/{sample}_T.bam',
+        tIndex = mantaWkngDir + 'filtered_bams/{sample}_T.bam.bai',
+        n = mantaWkngDir + 'filtered_bams/{sample}_N.bam',
+        nIndex = mantaWkngDir + 'filtered_bams/{sample}_N.bam.bai',
+        ref = mantaWkngDir + 'refGenome/' + refFile,
+        fai = mantaWkngDir + 'refGenome/' + refFile + '.fai'
     output:
-        outFile = tempDir + '{sample}/runWorkflow.py'
+        outFile = mantaTempDir + '{sample}/runWorkflow.py'
     params:
-        outParam = tempDir + '{sample}',
+        outParam = mantaTempDir + '{sample}',
         path = execDir + 'sv_callers/'
     shell:
-        '{params.path}manta-1.1.1.centos5_x86_64/bin/configManta.py \
+        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/manta-1.1.1.centos5_x86_64/bin/configManta.py \
             --normalBam {input.n} \
             --tumorBam {input.t} \
             --referenceFasta {input.ref} \
@@ -145,80 +107,80 @@ rule manta_call:
     the pipeline after 300s.
     '''
     input:
-        tempDir + '{sample}/runWorkflow.py'
+        mantaTempDir + '{sample}/runWorkflow.py'
     output:
-        tempDir + '{sample}/workspace/pyflow.data/logs/pyflow_log.txt',
-        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
-        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
-        tempDir + '{sample}/results/variants/candidateSV.vcf.gz',
-        tempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
-        tempDir + '{sample}/results/variants/diploidSV.vcf.gz',
-        tempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
-        tempDir + '{sample}/results/variants/somaticSV.vcf.gz',
-        tempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'#,
-        # tempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
-        # tempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
-        # tempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
-        # tempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
-    threads: nt
+        mantaTempDir + '{sample}/workspace/pyflow.data/logs/pyflow_log.txt',
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    threads: mantaNt
     params:
         q = queue
     shell:
         '{input} -m sge -j {threads} -q {params.q}' 
 
-rule move_call_files_pt1:
+rule manta_move_call_files_pt1:
     input:
-        tempDir + '{sample}/runWorkflow.py'
+        mantaTempDir + '{sample}/runWorkflow.py'
     output:
-        workingDir + '{sample}/runWorkflow.py'
+        mantaWkngDir + '{sample}/runWorkflow.py'
     params:
-        wDir = workingDir + '{sample}/'
+        wDir = mantaWkngDir + '{sample}/'
     shell:
         'mv {input} {params.wDir}'
 
-rule move_call_files_pt2:
+rule manta_move_call_files_pt2:
     input:
-        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
-        tempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
-        tempDir + '{sample}/results/variants/candidateSV.vcf.gz',
-        tempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
-        tempDir + '{sample}/results/variants/diploidSV.vcf.gz',
-        tempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
-        tempDir + '{sample}/results/variants/somaticSV.vcf.gz',
-        tempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
     output:
-        workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
-        workingDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
-        workingDir + '{sample}/results/variants/candidateSV.vcf.gz',
-        workingDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
-        workingDir + '{sample}/results/variants/diploidSV.vcf.gz',
-        workingDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
-        workingDir + '{sample}/results/variants/somaticSV.vcf.gz',
-        workingDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
+        mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
     params:
-        wDir = workingDir + '{sample}/results/variants/'
+        wDir = mantaWkngDir + '{sample}/results/variants/'
     shell:
         'mv {input} {params.wDir}'
 
-rule move_call_files_pt3:
+rule manta_move_call_files_pt3:
     input:
-        tempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
-        tempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
-        tempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
-        tempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+        mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
     output:
-        workingDir + '{sample}/results/stats/alignmentStatsSummary.txt',
-        workingDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
-        workingDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
-        workingDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+        mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv'
     params:
-        wDir = workingDir + '{sample}/results/stats/'
+        wDir = mantaWkngDir + '{sample}/results/stats/'
     shell:
         'mv {input} {params.wDir}'
 
-rule list_output_files:
+rule manta_list_output_files:
     input:
-        workingDir + '{sample}/results/variants/somaticSV.vcf.gz'
+        mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz'
     output:
         temp(parentDir + 'SV_files_for_annotation_manta.{sample}.txt')
     params:
@@ -226,21 +188,16 @@ rule list_output_files:
     shell:
         '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
 
-rule merge_list:
+rule manta_merge_list:
     input:
+        expand(mantaWkngDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
+        expand(mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
+        expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
+        expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
+        expand(mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
+        # don't actually need all these above inputs for this step, but I want a uniform rule all with just the last file so these are here now.
         expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
     output:
         parentDir + 'SV_files_for_annotation_manta.txt'
     shell:
         'cat {input} | sort | sed "1s/^/sample manta\\n/" > {output}'
-
-
-# rule manta_somatic_distributions:
-#     input:
-#     output:
-#     shell:
-
-# rule manta_basic_filtering:
-#     input:
-#     output:
-#     shell:

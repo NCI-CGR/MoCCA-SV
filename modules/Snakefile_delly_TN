@@ -4,60 +4,15 @@ import os
 
 # snakemake -s modules/Snakefile_delly_somatic --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 2" --jobs 100 --latency-wait 300
 
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
-parentDir = config['outDir']
-workingDir = parentDir + 'delly_TN/'
-dataDir = config['inDir']
-bamList = config['inFile']
-ref = config['refGenome']
-refFile = os.path.basename(ref)
-
-# read in a file where each row has the pair name, tumor file name, normal file name
-# this could change depending on functionality required, eg
-# if tumor and normal bams have the same name but are in different directories
-# (currently assuming same directory for T and N)
-bamDict = {}
-with open(bamList) as f:
-    for line in f:
-        (pair, tumor, normal) = line.split()
-        bamDict[pair] = (dataDir + tumor, dataDir + normal)
+dellyWkngDir = parentDir + 'delly_TN/'
 
 TYPES = ['DEL', 'DUP', 'INV', 'BND', 'INS']
-
-
-def get_tumor_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor
-
-
-def get_tumor_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor + '.bai'
-
-
-def get_normal_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal
-
-
-def get_normal_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal + '.bai'
-
-rule all:
-    input:
-        # expand(workingDir + 'somatic/{sample}_{type}.bcf', sample=bamDict.keys(), type=TYPES),
-        parentDir + 'SV_files_for_annotation_delly.txt'
-        # expand(workingDir + 'somatic/{sample}/samples.tsv', sample=bamDict.keys()),
-        # expand(workingDir + 'calls/{sample}_{type}.bcf', sample=bamDict.keys(), type=TYPES)
 
 rule delly_softlink_ref_seq:
     input:
         ref
     output:
-        workingDir + 'refGenome/' + refFile
+        dellyWkngDir + 'refGenome/' + refFile
     shell:
         'ln -s {input} {output}'
 
@@ -67,14 +22,14 @@ rule delly_call:
         tIndex = get_tumor_index,
         n = get_normal_bam,
         nIndex = get_normal_index,
-        ref = workingDir + 'refGenome/' + refFile
+        ref = dellyWkngDir + 'refGenome/' + refFile
     params:
         tp = '{type}',
         path = execDir + 'sv_callers/'
     output:
-        workingDir + 'calls/{sample}_{type}.bcf'
+        dellyWkngDir + 'calls/{sample}_{type}.bcf'
     shell:
-        '{params.path}delly_v0.7.7_parallel_linux_x86_64bit call \
+        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/delly_v0.7.7_parallel_linux_x86_64bit call \
             -t {params.tp} \
             -o {output} \
             -g {input.ref} \
@@ -90,7 +45,7 @@ rule delly_create_tsv:
         n = get_normal_bam,
         nIndex = get_normal_index
     output:
-        workingDir + 'somatic/{sample}_samples.tsv'
+        dellyWkngDir + 'somatic/{sample}_samples.tsv'
     params:
         path = execDir + 'scripts/'
     shell:
@@ -101,15 +56,15 @@ rule delly_create_tsv:
 
 rule delly_pre_filter:
     input:
-        bcf = workingDir + 'calls/{sample}_{type}.bcf',
-        tsv = workingDir + 'somatic/{sample}_samples.tsv'
+        bcf = dellyWkngDir + 'calls/{sample}_{type}.bcf',
+        tsv = dellyWkngDir + 'somatic/{sample}_samples.tsv'
     output:
-        workingDir + 'somatic/{sample}_{type}.bcf'
+        dellyWkngDir + 'somatic/{sample}_{type}.bcf'
     params:
         tp = '{type}',
         path = execDir + 'sv_callers/'
     shell:
-        '{params.path}delly_v0.7.7_parallel_linux_x86_64bit filter \
+        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/delly_v0.7.7_parallel_linux_x86_64bit filter \
             -t {params.tp} \
             -f somatic \
             -o {output} \
@@ -119,16 +74,16 @@ rule delly_pre_filter:
 
 rule delly_combine_output:
     input:
-        expand(workingDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES)
+        expand(dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES)
     output:
-        workingDir + 'somatic/{sample}_all.txt'
+        dellyWkngDir + 'somatic/{sample}_all.txt'
     shell:
         'module load bcftools;'
         'bcftools concat -a {input} | sort -k1,1 -k2,2n > {output}'
 
-rule list_output_files:
+rule delly_list_output_files:
     input:
-        workingDir + 'somatic/{sample}_all.txt'
+        dellyWkngDir + 'somatic/{sample}_all.txt'
     output:
         temp(parentDir + 'SV_files_for_annotation_delly.{sample}.txt')
     params:
@@ -136,7 +91,7 @@ rule list_output_files:
     shell:
         '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
 
-rule merge_list:
+rule delly_merge_list:
     input:
         expand(parentDir + 'SV_files_for_annotation_delly.{sample}.txt', sample=bamDict.keys())
     output:

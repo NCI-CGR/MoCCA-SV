@@ -1,7 +1,13 @@
-annotation/
+example_*
+annotation/dbVar_data/
+annotation/UCSC_track_data/
+annotation/genomic_context/  # will need this, but too big for github...
 test_cases/test_in/
 sv_callers/
 .snakemake/
+singularity/
+*.sh.o*
+*.sh.e*
 
 # Compiled source #
 ###################

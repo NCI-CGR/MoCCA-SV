@@ -49,20 +49,20 @@ genContextOverlap = config['annotationParams']['genomicContextOverlap']
 publicDataOverlap = config['annotationParams']['publicDataOverlap']
 if annotateOnly:
     annFile = config['annotateFile']
-#     inputDict = {}
-#     firstLine = ''
-#     with open(annFile) as f:
-#         firstLine = f.readline().split()[1:]
-#         if collections.Counter(firstLine) != collections.Counter(CALLERS):
-#             sys.exit('ERROR: input file headers do not match callers in config file.\n')
-#         for line in f:
-#             l = line.split()
-#             inputDict[l[0]] = l[1:]
+    inputDict = {}
+    firstLine = ''
+    with open(annFile) as f:
+        firstLine = f.readline().split()[1:]
+        if collections.Counter(firstLine) != collections.Counter(CALLERS):
+            sys.exit('ERROR: input file headers do not match callers in config file.\n')
+        for line in f:
+            l = line.split()
+            inputDict[l[0]] = l[1:]
 
-# def get_input_file(wildcards):
-#     l = inputDict[wildcards.sample]
-#     i = firstLine.index(wildcards.caller)
-#     return l[i]
+def get_input_file(wildcards):
+    l = inputDict[wildcards.sample]
+    i = firstLine.index(wildcards.caller)
+    return l[i]
 
 GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
 PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
@@ -112,8 +112,7 @@ rule convert_to_bed:
 
     '''
     input:
-        i = annFile if annotateOnly else parentDir + 'SV_files_for_annotation.txt'#,
-        #f = get_input_file
+        get_input_file if annotateOnly else parentDir + 'SV_files_for_annotation.txt'
     output:
         annOutDir + '{caller}/bed_input/{sample}_intra.bed',
         annOutDir + '{caller}/bed_input/{sample}_end1.bed',
@@ -122,22 +121,26 @@ rule convert_to_bed:
         path = execDir + 'scripts/',
         annOutDir = annOutDir + '{caller}/bed_input/'
     run:
-        # this remakes the dict for every caller/sample combo, which is terribly inefficient.
-        # however, doing this outside of the rule means that it will look for SV_files_for_annotation.txt
-        # before it is actually created, which is also a problem.
-        inputDict = {}
-        firstLine = ''
-        with open(input.i) as f:
-            firstLine = f.readline().split()[1:]
-            if collections.Counter(firstLine) != collections.Counter(CALLERS):
-                sys.exit('ERROR: input file headers do not match callers in config file.\n')
-            for line in f:
-                l = line.split()
-                inputDict[l[0]] = l[1:]
+        # this remakes the dict for every caller/sample combo for the callAndAnnotate pipeline,
+        # which is terribly inefficient.  However, doing this outside of the rule means that it
+        # will look for SV_files_for_annotation.txt before it is actually created, which is also
+        # a problem.
+        if annotateOnly:
+            shell('{params.path}{wildcards.caller}_to_bed.sh {input} {wildcards.sample} {params.annOutDir}')
+        else:
+            inputDict = {}
+            firstLine = ''
+            with open(input) as f:
+                firstLine = f.readline().split()[1:]
+                if collections.Counter(firstLine) != collections.Counter(CALLERS):
+                    sys.exit('ERROR: input file headers do not match callers in config file.\n')
+                for line in f:
+                    l = line.split()
+                    inputDict[l[0]] = l[1:]
 
-        l = inputDict[wildcards.sample]
-        i = firstLine.index(wildcards.caller)
-        shell('{params.path}{wildcards.caller}_to_bed.sh ' + l[i] + ' {wildcards.sample} {params.annOutDir}')
+            l = inputDict[wildcards.sample]
+            i = firstLine.index(wildcards.caller)
+            shell('{params.path}{wildcards.caller}_to_bed.sh ' + l[i] + ' {wildcards.sample} {params.annOutDir}')
 
 rule remove_identical_calls:
     '''

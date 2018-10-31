@@ -168,7 +168,7 @@ if ($runMode =~ /annotateOnly/) {
     my $firstLine = <$fh>;
     chomp($firstLine);
     close $fh;
-    my @line = split(/ /, $firstLine);
+    my @line = split(' ', $firstLine);
     @line = @line[1..$#line];
     my $diff = Array::Diff->diff(\@line, \@callers);
     die "ERROR: Headers from $annFile do not match callers listed in config file.\n" if ($diff->count);

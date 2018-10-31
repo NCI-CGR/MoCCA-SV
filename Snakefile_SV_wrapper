@@ -108,7 +108,7 @@ elif callAndAnnotate:
                         print(inputDict)
             with open(str(output), 'w') as out:
                 for key, values in inputDict.items(): 
-                    out.write('\t'.join([key] + [str(x) for x in values]) + '\n')
+                    out.write(' '.join([key] + [str(x) for x in values]) + '\n')
 
     
 

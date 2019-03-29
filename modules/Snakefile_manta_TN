@@ -1,43 +1,10 @@
 #!/usr/bin/env python3
 
-import os
-
-# snakemake -s Snakefile_manta_somatic --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y" --jobs 100 --latency-wait 300
-
-mantaWkngDir = parentDir + 'manta_TN/'
+mantaWkngDir = 'manta_TN/'
 mantaTempDir = config['tempDir'].rstrip('/') + 'manta_TN/'
 i = CALLERS.index("manta")
 mantaNt = config['maxThreads'][i]
 queue = config['queue']
-
-#refNoExt = os.path.splitext(ref)[0]
-refFile = os.path.basename(ref)
-
-# rule all:
-#     input:
-#         expand(mantaWkngDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
-#         expand(mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
-#         expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
-#         expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
-#         expand(mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
-#         parentDir + 'SV_files_for_annotation_manta.txt'
-
-rule manta_softlink_ref_seq:
-    input:
-        ref
-    output:
-        mantaWkngDir + 'refGenome/' + refFile
-    shell:
-        'ln -s {input} {output}'
-
-rule manta_index_ref:
-    input:
-        mantaWkngDir + 'refGenome/' + refFile
-    output:
-        fai = mantaWkngDir + 'refGenome/' + refFile + '.fai'
-    shell:
-        'module load samtools;'
-        'samtools faidx {input};'
 
 rule manta_filter_t_bams:
     input:
@@ -45,10 +12,12 @@ rule manta_filter_t_bams:
     output:
         filtT = mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     params:
-        path = execDir + 'scripts/'
+        path = execDir + 'scripts/',
+        t = get_tumor_bam_container,
+        filtT = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'module load samtools;'
-        '{params.path}filter_bams.sh {input.t} {output.filtT}'
+        '{params.path}filter_bams.sh {params.t} {params.filtT}'
 
 rule manta_filter_n_bams:
     input:
@@ -56,28 +25,34 @@ rule manta_filter_n_bams:
     output:
         filtN = mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     params:
-        path = execDir + 'scripts/'
+        path = execDir + 'scripts/',
+        n = get_normal_bam_container,
+        filtN = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'module load samtools;'
-        '{params.path}filter_bams.sh {input.n} {output.filtN}'
+        '{params.path}filter_bams.sh {params.n} {params.filtN}'
 
 rule manta_index_filtered_t_bams:
     input:
         filtT = mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     output:
         mantaWkngDir + 'filtered_bams/{sample}_T.bam.bai'
+    params:
+        outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'module load samtools;'
-        'samtools index {input.filtT}'
+        'samtools index {params.filtT}'
 
 rule manta_index_filtered_n_bams:
     input:
         filtN = mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     output:
         mantaWkngDir + 'filtered_bams/{sample}_N.bam.bai'
+    params:
+        outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'module load samtools;'
-        'samtools index {input.filtN}'
+        'samtools index {params.filtN}'
 
 rule manta_create_run_script:
     input:
@@ -85,18 +60,23 @@ rule manta_create_run_script:
         tIndex = mantaWkngDir + 'filtered_bams/{sample}_T.bam.bai',
         n = mantaWkngDir + 'filtered_bams/{sample}_N.bam',
         nIndex = mantaWkngDir + 'filtered_bams/{sample}_N.bam.bai',
-        ref = mantaWkngDir + 'refGenome/' + refFile,
-        fai = mantaWkngDir + 'refGenome/' + refFile + '.fai'
+        # ref = 'refGenome/' + refFile,
+        # fai = 'refGenome/' + refFile + '.fai'
+        ref = ref,
+        fai = ref + '.fai'
     output:
         outFile = mantaTempDir + '{sample}/runWorkflow.py'
     params:
         outParam = mantaTempDir + '{sample}',
-        path = execDir + 'sv_callers/'
+        t = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam',
+        n = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam',
+        ref = refBindPath + refFile
+    singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
     shell:
-        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/manta-1.1.1.centos5_x86_64/bin/configManta.py \
-            --normalBam {input.n} \
-            --tumorBam {input.t} \
-            --referenceFasta {input.ref} \
+        'configManta.py \
+            --normalBam {params.n} \
+            --tumorBam {params.t} \
+            --referenceFasta {params.ref} \
             --runDir {params.outParam}'
 
 rule manta_call:
@@ -105,6 +85,8 @@ rule manta_call:
     files start to show up, which snakemake interprets as missing files.
     So, include the pyflow log as input, so that snakemake won't stop
     the pipeline after 300s.
+
+    Need to decide what to do about this step wrt platform independence.
     '''
     input:
         mantaTempDir + '{sample}/runWorkflow.py'
@@ -124,9 +106,10 @@ rule manta_call:
         mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
     threads: mantaNt
     params:
-        q = queue
+        tempBindPath + 'manta_TN/{sample}/runWorkflow.py'
+    singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
     shell:
-        '{input} -m sge -j {threads} -q {params.q}' 
+        '{params} -m local -j {threads}' 
 
 rule manta_move_call_files_pt1:
     input:

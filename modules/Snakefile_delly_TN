@@ -1,20 +1,9 @@
 #!/usr/bin/env python3
 
-import os
-
-# snakemake -s modules/Snakefile_delly_somatic --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 2" --jobs 100 --latency-wait 300
-
-dellyWkngDir = parentDir + 'delly_TN/'
+# dellyWkngDir = parentDir + 'delly_TN/'
+dellyWkngDir = 'delly_TN/'  # this is made within the parentDir (AKA outDir from the config file)
 
 TYPES = ['DEL', 'DUP', 'INV', 'BND', 'INS']
-
-rule delly_softlink_ref_seq:
-    input:
-        ref
-    output:
-        dellyWkngDir + 'refGenome/' + refFile
-    shell:
-        'ln -s {input} {output}'
 
 rule delly_call:
     input:
@@ -22,21 +11,24 @@ rule delly_call:
         tIndex = get_tumor_index,
         n = get_normal_bam,
         nIndex = get_normal_index,
-        ref = dellyWkngDir + 'refGenome/' + refFile
-    params:
-        tp = '{type}',
-        path = execDir + 'sv_callers/'
+        ref = ref
     output:
         dellyWkngDir + 'calls/{sample}_{type}.bcf'
+    params:
+        tp = '{type}',
+        r = refBindPath + refFile,
+        t = get_tumor_bam_container,
+        n = get_normal_bam_container,
+        o = outputBindPath + dellyWkngDir + 'calls/{sample}_{type}.bcf'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-7-9'
     shell:
-        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/delly_v0.7.7_parallel_linux_x86_64bit call \
+        'delly call \
             -t {params.tp} \
-            -o {output} \
-            -g {input.ref} \
-            {input.n} {input.t}'
+            -o {params.o} \
+            -g {params.ref} \
+            {params.n} {params.t}'
             #-x /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/sv_callers/delly/excludeTemplates/human.hg19.excl.tsv \
             # exclude file?
-            # or, wildcards.type instead of params
 
 rule delly_create_tsv:
     input:
@@ -47,11 +39,13 @@ rule delly_create_tsv:
     output:
         dellyWkngDir + 'somatic/{sample}_samples.tsv'
     params:
-        path = execDir + 'scripts/'
+        t = get_tumor_bam_container,
+        n = get_normal_bam_container,
+        o = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-7-9'
     shell:
-        'module load samtools;'
-        '{params.path}create_tsv.sh {input.t} tumor {output};'
-        '{params.path}create_tsv.sh {input.n} control {output}'
+        'create_tsv.sh {params.t} tumor {params.o};'
+        'create_tsv.sh {params.n} control {params.o}'
     # tab-delimited sample description file where the first column is the sample id (as in the VCF/BCF file) and the second column is either tumor or control
 
 rule delly_pre_filter:
@@ -62,14 +56,17 @@ rule delly_pre_filter:
         dellyWkngDir + 'somatic/{sample}_{type}.bcf'
     params:
         tp = '{type}',
-        path = execDir + 'sv_callers/'
+        tsv = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv'
+        bcf = outputBindPath + dellyWkngDir + 'calls/{sample}_{type}.bcf',
+        o = outputBindPath + dellyWkngDir + 'somatic/{sample}_{type}.bcf'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-7-9'
     shell:
-        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/delly_v0.7.7_parallel_linux_x86_64bit filter \
+        'delly filter \
             -t {params.tp} \
             -f somatic \
-            -o {output} \
-            -s {input.tsv} \
-            {input.bcf}'
+            -o {params.o} \
+            -s {params.tsv} \
+            {params.bcf}'
             # tab-delimited sample description file where the first column is the sample id (as in the VCF/BCF file) and the second column is either tumor or control
 
 rule delly_combine_output:
@@ -77,9 +74,13 @@ rule delly_combine_output:
         expand(dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES)
     output:
         dellyWkngDir + 'somatic/{sample}_all.txt'
+    params:
+        i = expand(outputBindPath + dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES), 
+        o = outputBindPath + dellyWkngDir + 'somatic/{sample}_all.txt'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bcftools_1-9'
     shell:
-        'module load bcftools;'
-        'bcftools concat -a {input} | sort -k1,1 -k2,2n > {output}'
+        'bcftools concat -a {params.i} | sort -k1,1 -k2,2n > {params.o}'
 
 rule delly_list_output_files:
     input:

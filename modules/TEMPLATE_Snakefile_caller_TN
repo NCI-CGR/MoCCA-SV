@@ -1,50 +1,30 @@
 #!/usr/bin/env python3
 
-import os
+<caller>WkngDir = '<caller>_TN/'
+<caller>TempDir = config['tempDir'].rstrip('/') + '/<caller>_TN/'
+<var> = config['<var>']
 
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
-parentDir = config['outDir']
-dataDir = config['inDir']
-bamList = config['inFile']
-ref = config['refGenome']
+# if the caller is multi-threaded:
+i = CALLERS.index("<caller>")
+<caller>Nt = config['maxThreads'][i]
 
-# if caller can use multi-threading:
-callers = config['callers']
-i = callers.index('<caller>')
-nt = config['maxThreads'][i]
-
-workingDir = parentDir + '<caller>_TN/'
-
-bamDict = {}
-with open(bamList) as f:
-    for line in f:
-        (pair, tumor, normal) = line.split()
-        bamDict[pair] = (dataDir + tumor, dataDir + normal)
-
-def get_tumor_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor
-
-def get_tumor_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return tumor + '.bai'
-
-def get_normal_bam(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal
-
-def get_normal_index(wildcards):
-    (tumor, normal) = bamDict[wildcards.sample]
-    return normal + '.bai'
-
-rule all:
-	input:
-		'<caller-specific final output>',
-		parentDir + 'SV_files_for_annotation_<caller>.txt'
 
 # insert caller-specific rules here
+rule <caller>_<rule>:
+    input: 
+        # outside-container paths and input files
+        # you may want to use the functions defined in Snakefile_SV_scaffold to link tumor/normal pairs
+    output: 
+        # outside-container paths and output files
+    params: 
+        # inside-container paths and input/output files
+        # note that every container has /input/, /output/, /ref/, and /scratch/
+        # these get mapped to outside-container paths that you specify in config
+    threads: <caller>Nt # if applicable
+    singularity: 
+        # singularity image
+    shell: 
+        # commands run using inside-container paths via params section
 # ...
 # ...
 # ...
@@ -56,9 +36,11 @@ rule all:
 # ...
 # ...
 
-rule list_output_files:
+
+# end with these two rules, which feed back into the final rules in the scaffold (combine_ann_files and all)
+rule <caller>_list_output_files:
     input:
-        workingDir + '<caller output>'
+        <caller>WkngDir + 'path/to/{sample}_calls.vcf'
     output:
         temp(parentDir + 'SV_files_for_annotation_<caller>.{sample}.txt')
     params:
@@ -66,10 +48,10 @@ rule list_output_files:
     shell:
         '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
 
-rule merge_list:
+rule <caller>_merge_list:
     input:
         expand(parentDir + 'SV_files_for_annotation_<caller>.{sample}.txt', sample=bamDict.keys())
     output:
         parentDir + 'SV_files_for_annotation_<caller>.txt'
     shell:
-        'cat {input} | sed "1s/^/sample <caller>\\n/" > {output}'
+        'cat {input} | sort | sed "1s/^/sample <caller>\\n/" > {output}'

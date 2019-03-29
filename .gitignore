@@ -1,8 +1,11 @@
 example_*
-annotation/dbVar_data/
-annotation/UCSC_track_data/
-annotation/genomic_context/  # will need this, but too big for github...
+annotation*  
+    # will need this, but too big for github...
+    # annotation/dbVar_data/
+    # annotation/UCSC_track_data/
+    # annotation/genomic_context/  
 test_cases/test_in/
+test_out/
 sv_callers/
 .snakemake/
 singularity/

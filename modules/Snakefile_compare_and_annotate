@@ -204,6 +204,7 @@ rule remove_identical_calls:
 
 # rule find_outermost_breakends:
 #     '''
+#       NOTE - pretty sure there's a bedtools command that obviates this.
 #     This step parses the output from bedtools and records the outermost
 #     breakpoints for every overlapping SV.  Note that this results in multiple
 #     identical SVs (e.g. if chr1 123 345 and chr1 124 346 overlap, this changes
@@ -279,10 +280,21 @@ rule compare_intra_SVs:
         annOutDir + '{caller}/intrachromosomal/{sample}.compare'
     params:
         overlap = crossCallerOverlap
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -f {params.overlap} -r -wao > {output}' 
         # would using -c instead of -wao obviate the following rule?  would have to do it on each caller one-by-one I think.  Not sure how this would work in a rule.
+
+rule compare_insertions:
+    '''
+    For any SVs with <=10 bp between reported breakpoints, count them as insertions
+    and compare to one another.
+    '''
+    input:
+    output:
+    shell:
 
 rule parse_intra_comparison:
     '''
@@ -332,8 +344,10 @@ rule pad_inter_chrom_ends:
         genome = execDir + 'annotation/human_g1k_v37.genome',
         pad = interchromPad,
         path = execDir + 'scripts/'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bash {params.path}pad_bed.sh {params.pad} {input.end1} {params.genome} {output.end1};'
         'bash {params.path}pad_bed.sh {params.pad} {input.end2} {params.genome} {output.end2}'
 
@@ -348,8 +362,10 @@ rule compare_inter_chr_end1:
         # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
         annOutDir + '{caller}/interchromosomal/{sample}_end1.compare'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
         # 'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
 
@@ -363,8 +379,10 @@ rule compare_inter_chr_end2:
         # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
         annOutDir + '{caller}/interchromosomal/{sample}_end2.compare'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
         # 'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
 
@@ -450,8 +468,10 @@ rule query_genomic_context:
         annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
     params:
         overlap = genContextOverlap
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.db} -sorted -f {params.overlap} -c > {output}'
         # removed -r because it doesn't need to be reciprocal - if 70% of a variant is in a repeat region, for example, it doesn't matter how much of the repeat region is covered
 
@@ -532,8 +552,10 @@ rule query_public_datasets:
         annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
     params:
         overlap = publicDataOverlap
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.db} -sorted -f {params.overlap} -r -wao > {output}'
 
 
@@ -591,8 +613,10 @@ rule find_intersected_genes:
         db = genesPath + '{geneset}.bed'
     output:
         annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'module load bedtools/2.26.0;'
+        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.db} -sorted -wao > {output}'
 
 rule format_intersected_genes:

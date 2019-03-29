@@ -1,54 +1,24 @@
 #!/usr/bin/env python3
 
-import os
-
-# snakemake -s modules/Snakefile_svaba_TN --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 2" --jobs 100 --latency-wait 300
-    # tested with chr3part bams - works!
-
-svabaWkngDir = parentDir + 'svaba_TN/'
+svabaWkngDir = 'svaba_TN/'
 svabaTempDir = config['tempDir'].rstrip('/') + '/svaba_TN/'
 i = CALLERS.index("svaba")
 svabaNt = config['maxThreads'][i]
 
-rule svaba_softlink_ref_seq:
-    input:
-        ref
-    output:
-        svabaWkngDir + 'refGenome/' + refFile
-    shell:
-        'ln -s {input} {output}'
-
-rule svaba_index_ref:
-    input:
-        svabaWkngDir + 'refGenome/' + refFile
-    output:
-        d = svabaWkngDir + 'refGenome/' + refNoExt + '.dict',
-        amb = svabaWkngDir + 'refGenome/' + refFile + '.amb',
-        ann = svabaWkngDir + 'refGenome/' + refFile + '.ann',
-        bwt = svabaWkngDir + 'refGenome/' + refFile + '.bwt',
-        fai = svabaWkngDir + 'refGenome/' + refFile + '.fai',
-        pac = svabaWkngDir + 'refGenome/' + refFile + '.pac',
-        sa = svabaWkngDir + 'refGenome/' + refFile + '.sa'
-    shell:
-        'module load bwa samtools Picard;'
-        'bwa index -a bwtsw {input};'
-        'samtools faidx {input};'
-        'picard CreateSequenceDictionary REFERENCE={input} OUTPUT={output.d}'
-
 rule svaba_call:
     input:
         t = get_tumor_bam,
-        tIndex = get_tumor_index,
+        tIndex = get_tumor_index,   
         n = get_normal_bam,
         nIndex = get_normal_index,
-        ref = svabaWkngDir + 'refGenome/' + refFile,
-        d = svabaWkngDir + 'refGenome/' + refNoExt + '.dict',
-        amb = svabaWkngDir + 'refGenome/' + refFile + '.amb',
-        ann = svabaWkngDir + 'refGenome/' + refFile + '.ann',
-        bwt = svabaWkngDir + 'refGenome/' + refFile + '.bwt',
-        fai = svabaWkngDir + 'refGenome/' + refFile + '.fai',
-        pac = svabaWkngDir + 'refGenome/' + refFile + '.pac',
-        sa = svabaWkngDir + 'refGenome/' + refFile + '.sa'
+        ref = ref,
+        d = refDir + '/' + refNoExt + '.dict',
+        amb = ref + '.amb',
+        ann = ref + '.ann',
+        bwt = ref + '.bwt',
+        fai = ref + '.fai',
+        pac = ref + '.pac',
+        sa = ref + '.sa'
     output:
         svabaTempDir + 'calls/{sample}.alignments.txt.gz',
         svabaTempDir + 'calls/{sample}.bps.txt.gz',
@@ -65,17 +35,18 @@ rule svaba_call:
         svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
     threads: svabaNt
     params:
-        opath = svabaTempDir + 'calls/',
-        epath = execDir + 'sv_callers/'
+        r = refBindPath + refFile,
+        o = tempBindPath + svabaWkngDir + 'calls/',
+        t = get_tumor_bam_container,
+        n = get_normal_bam_container
+    singularity: 'shub://bballew/NGS_singularity_recipes:svaba'
     shell:
-        'module load gcc/4.8.4;'
-        '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline/sv_callers/svaba/bin/svaba run \
+        'svaba run \
             -p {threads} \
-            -G {input.ref} \
-            -t {input.t} \
-            -n {input.n} \
-            -a {params.opath}{wildcards.sample}'
-
+            -G {params.r} \
+            -t {params.t} \
+            -n {params.n} \
+            -a {params.o}{wildcards.sample}'
 
 rule move_call_files:
     input:

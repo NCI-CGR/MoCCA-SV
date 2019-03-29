@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+
+'''
+This snakefile collects variables from the config file, makes decisions regarding
+which rules/branches of the pipeline need to be included, and then starts running
+those rules.
+'''
+
+import os
+
+# reference the config file
+conf = os.environ.get("conf")
+configfile: conf
+
+# import variables from the config file
+execDir = config['execDir'].rstrip('/') + '/'   # ensure one trailing slash
+parentDir = config['outDir'].rstrip('/') + '/'  # ensure one trailing slash
+    # the shell script that invokes this snakefile cd's to parentDir, which snakemake then considers the home directory, so it's not necessary to include parentDir in most rules.
+CALLERS = config['callers']
+ref = config['refGenome']
+refFile = os.path.basename(ref)
+refDir = os.path.dirname(ref)
+refNoExt = os.path.splitext(refFile)[0]
+anMode = config['analysisMode']
+bamList = config['inFile']
+dataDir = config['inDir'].rstrip('/') + '/'  # ensure one trailing slash
+outDir = config['outDir'].rstrip('/') + '/'  # ensure one trailing slash
+callAndAnnotate = config['runMode']['callAndAnnotate']
+callOnly = config['runMode']['callOnly']
+annotateOnly = config['runMode']['annotateOnly']
+
+'''
+These are the paths in the singularity containers that I'm binding to.
+Note that there is also an /output/ directory in each container if needed.
+When snakemake is invoked in the shell script SV_wrapper.sh, these paths
+are bound to the local directories specified in config.
+'''
+inputBindPath = '/input/'   # bound to outside-container inDir from config file
+tempBindPath = '/scratch/'  # bound to outside-container tempDir from config file
+refBindPath = '/ref/'       # bound to outside-container refGenome path from config file
+outputBindPath = '/output/' # bound to outside-container outDir from config file
+
+# get bam file locations and relationships if applicable (e.g. tumor and normal pairs, family trios, etc)
+bamDict = {}         # bam files with outside-container paths pre-pended
+containerDict = {}   # same bam files, but with the bound inside-container paths pre-pended
+if anMode == 'TN':
+    with open(bamList) as f:
+        for line in f:
+            (pair, tumor, normal) = line.split()
+            containerDict[pair] = (inputBindPath + tumor, inputBindPath + normal)
+            bamDict[pair] = (dataDir + tumor, dataDir + normal)
+elif (anMode == 'germline') or (anMode == 'TO'):
+    with open(bamList) as f:
+        for line in f:
+            (subject, bam) = line.split()
+            containerDict[subject] = (inputBindPath + bam)
+            bamDict[subject] = (dataDir + bam)
+elif anMode == 'de_novo':
+    with open(bamList) as f:
+        for line in f:
+            (family, mom, dad, kid) = line.split()
+            containerDict[family] = (inputBindPath + mom, inputBindPath + dad, inputBindPath + kid)
+            bamDict[family] = (dataDir + mom, dataDir + dad, dataDir + kid)
+
+
+# functions to retrieve bam files by relationship (e.g. matching tumor and normal)
+def get_tumor_bam(wildcards):
+    '''
+    Takes bamDict created from user's sample file
+    Returns tumor file name with local path
+    '''
+    (tumor, normal) = bamDict[wildcards.sample]
+    return tumor
+
+
+def get_tumor_index(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return tumor + '.bai'
+
+
+def get_normal_bam(wildcards):
+    '''
+    Takes bamDict created from user's sample file
+    Returns normal file name with local path
+    '''
+    (tumor, normal) = bamDict[wildcards.sample]
+    return normal
+
+
+def get_normal_index(wildcards):
+    (tumor, normal) = bamDict[wildcards.sample]
+    return normal + '.bai'
+
+
+def get_tumor_bam_container(wildcards):
+    '''
+    Takes bamDict created from user's sample file
+    Returns tumor file name with container path
+    '''
+    (tumor, normal) = containerDict[wildcards.sample]
+    return tumor
+
+
+def get_normal_bam_container(wildcards):
+    '''
+    Takes bamDict created from user's sample file
+    Returns normal file name with container path
+    '''
+    (tumor, normal) = containerDict[wildcards.sample]
+    return normal
+
+# def get_mom_bam(wildcards):
+
+# def get_mom_index(wildcards):
+
+# def get_dad_bam(wildcards):
+
+# def get_dad_index(wildcards):
+
+# def get_kid_bam(wildcards):
+
+# def get_kid_index(wildcards):
+
+# def get_mom_bam_container(wildcards):
+
+# def get_dad_bam_container(wildcards):
+
+# def get_kid_bam_container(wildcards):
+
+if callOnly: 
+    for c in CALLERS:
+        include: 'modules/Snakefile_' + c + '_' + anMode
+    rule all:
+        input:
+            # ref + '.fai',
+            # ref + '.amb',
+            # ref + '.ann',
+            # ref + '.bwt',
+            # ref + '.pac',
+            # ref + '.sa',
+            # refDir + '/' + refNoExt + '.dict'
+            # expand(svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf', sample=bamDict.keys())
+            parentDir + 'SV_files_for_annotation.txt'
+elif callAndAnnotate:
+    for c in CALLERS:
+        include: 'modules/Snakefile_' + c + '_' + anMode
+    include: 'modules/Snakefile_compare_and_annotate'
+    rule all:
+        input:
+            expand(annOutDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=bamDict.keys()),
+            expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=bamDict.keys())
+elif annotateOnly:
+    include: 'modules/Snakefile_compare_and_annotate'
+    rule all:
+        input:
+            expand(annOutDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=inputDict.keys()),
+            expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=inputDict.keys())
+
+
+if callOnly or callAndAnnotate:
+    rule bwa_index_ref:
+        '''
+        Use relative paths for jobs run in containers.  parentDir is passed to singularity as home.
+
+        If overlay is available and enabled in singularity, then you can dynamically create paths inside
+        the container, so you could just bind the path to ref to an identical path within the container.
+        However, overlay is not enabled on our system, and we don't know what other people's systems would
+        look like.  So, I'm stipulating that you must build a container with certain directories included
+        (/input, /output, /ref, and /scratch) and then bind to them.
+
+        It seems like I can put the real paths in the input/output, and mock up the container paths in params 
+        and put those in the shell invocation.  This works for making indices for the reference files, but is 
+        more complicated for the svaba workflow.
+        '''
+        input:
+            ref
+        output:
+            ref + '.amb',
+            ref + '.ann',
+            ref + '.bwt',
+            ref + '.pac',
+            ref + '.sa'
+        params:
+            f = refBindPath + refFile
+        singularity: 'shub://bballew/NGS_singularity_recipes:bwa_0-7-17'
+        shell:
+            'bwa index -a bwtsw {params.f}'
+
+    rule fai_index_ref:
+        input:
+            ref
+        output:
+            ref + '.fai'
+        params:
+            f = refBindPath + refFile
+        singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
+        shell:
+            'samtools faidx {params.f}'
+
+    rule dict_index_ref:
+        input:
+            ref
+        output:
+            refDir + '/' + refNoExt + '.dict'
+        params:
+            f = refBindPath + refFile,
+            o = refBindPath + refNoExt + '.dict'
+        singularity: 'shub://bballew/NGS_singularity_recipes:picard_2-18-15'
+        shell:
+            'java -jar /bin/picard.jar CreateSequenceDictionary REFERENCE={params.f} OUTPUT={params.o}'
+
+    rule combine_ann_files:
+        input:
+            expand(parentDir + 'SV_files_for_annotation_{caller}.txt', caller=CALLERS)
+        output:
+            parentDir + 'SV_files_for_annotation.txt'
+        run:
+            inputDict = {}
+            for file in input:
+                with open(file) as f:
+                    for line in f:
+                        l = line.split()
+                        if l[0] in inputDict:
+                            inputDict[l[0]].append(l[1])
+                        else:
+                            inputDict[l[0]] = [l[1]]
+                        print(inputDict)
+            with open(str(output), 'w') as out:
+                for key, values in inputDict.items(): 
+                    out.write(' '.join([key] + [str(x) for x in values]) + '\n')

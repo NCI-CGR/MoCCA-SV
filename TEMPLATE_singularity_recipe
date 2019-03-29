@@ -1,0 +1,27 @@
+BootStrap: yum
+OSVersion: 7
+MirrorURL: http://mirror.centos.org/centos-%{OSVERSION}/%{OSVERSION}/os/$basearch/
+Include: yum
+
+%labels
+    AUTHOR <name>
+
+%setup
+
+    mkdir -p ${SINGULARITY_ROOTFS}/input
+    mkdir -p ${SINGULARITY_ROOTFS}/output
+    mkdir -p ${SINGULARITY_ROOTFS}/ref
+    mkdir -p ${SINGULARITY_ROOTFS}/scratch
+
+%environment
+    export PATH="<path>"
+
+%post
+    yum -y groupinstall "Development Tools"
+    yum -y install <dependencies>
+
+    ### install <tool>
+
+    <tool-specific installation/setup commands>
+
+    yum clean all

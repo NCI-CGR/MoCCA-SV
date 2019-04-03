@@ -39,6 +39,7 @@ inputBindPath = '/input/'   # bound to outside-container inDir from config file
 tempBindPath = '/scratch/'  # bound to outside-container tempDir from config file
 refBindPath = '/ref/'       # bound to outside-container refGenome path from config file
 outputBindPath = '/output/' # bound to outside-container outDir from config file
+execBindPath = '/exec/'     # bound to outside-container execDir from config file
 
 # get bam file locations and relationships if applicable (e.g. tumor and normal pairs, family trios, etc)
 bamDict = {}         # bam files with outside-container paths pre-pended

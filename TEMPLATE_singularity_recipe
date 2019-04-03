@@ -12,6 +12,7 @@ Include: yum
     mkdir -p ${SINGULARITY_ROOTFS}/output
     mkdir -p ${SINGULARITY_ROOTFS}/ref
     mkdir -p ${SINGULARITY_ROOTFS}/scratch
+    mkdir -p ${SINGULARITY_ROOTFS}/exec
 
 %environment
     export PATH="<path>"

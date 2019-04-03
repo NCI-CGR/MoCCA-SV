@@ -41,9 +41,9 @@ import collections
 import pandas as pd
 
 genomeBuild = config['genomeBuild']
-annInDir = config['outDir'].rstrip('/') + '/'  # ensure one trailing slash
-annOutDir = annInDir + 'compare_and_annotate/'
+annOutDir = parentDir + 'compare_and_annotate/'
 interchromPad = config['annotationParams']['interchromPadding']
+insertionPad = config['annotationParams']['insertionPadding']
 crossCallerOverlap = config['annotationParams']['crossCallerOverlap']
 genContextOverlap = config['annotationParams']['genomicContextOverlap']
 publicDataOverlap = config['annotationParams']['publicDataOverlap']
@@ -161,9 +161,9 @@ rule remove_identical_calls:
         end1 = annOutDir + '{caller}/bed_input/{sample}_end1.bed',
         end2 = annOutDir + '{caller}/bed_input/{sample}_end2.bed'
     output:
-        sameChrom = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
-        end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
-        end2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
+        sameChrom = temp(annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed'),
+        end1 = temp(annOutDir + '{caller}/bed_input/{sample}_end1.uniq.bed'),
+        end2 = temp(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.bed')
     run:
         shell('sort -k 1,1 -k2,2n -k3,3n --stable --unique {input.sameChrom} > {output.sameChrom}')
         l1 = sum(1 for line in open(input.end1))
@@ -205,6 +205,7 @@ rule remove_identical_calls:
 # rule find_outermost_breakends:
 #     '''
 #       NOTE - pretty sure there's a bedtools command that obviates this.
+# 
 #     This step parses the output from bedtools and records the outermost
 #     breakpoints for every overlapping SV.  Note that this results in multiple
 #     identical SVs (e.g. if chr1 123 345 and chr1 124 346 overlap, this changes
@@ -249,6 +250,53 @@ rule remove_identical_calls:
 #     shell:
 #         'sort -k1,1 -k2,2n -k3,3n --stable --unique {input} > {output}'
 
+rule separate_insertions:
+    '''
+    Pull out SVs with breakpoints <=10bp apart.
+    '''
+    input:
+        annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed'
+    output:
+        o1 = temp(annOutDir + '{caller}/bed_input/{sample}_SVunder10.bed'),
+        o2 = temp(annOutDir + '{caller}/bed_input/{sample}_SVover10.bed')
+    shell:
+        'bash {params.path}separate_insertions.sh {input} {output.o1} {output.o2}'
+
+rule pad_insertions:
+    '''
+    For SVs with breakpoints <=10bp apart, pad prior to comparison.
+
+    Note that these are still being included in the reciprocal overlap
+    comparison below, rather than being treated differently.  Thus,
+    any nearby SV must have X% reciprocal overlap to be considered
+    identical.  If two SVs<=10bp are nearby, they will be padded in the
+    same way and will likely display overlap.  Obviously, with more
+    padding, you will be more likely to detect overlapping SVs.
+    '''
+    input:
+        annOutDir + '{caller}/bed_input/{sample}_SVunder10.bed'
+    output:
+        temp(annOutDir + '{caller}/bed_input/{sample}_SVunder10.padded.bed')
+    params:
+        genome = execBindPath + 'annotation/human_g1k_v37.genome',
+        pad = insertionPad,
+        path = execBindPath + 'scripts/',
+        i = outBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_SVunder10.bed',
+        o = outBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_SVunder10.padded.bed'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
+    shell:
+        'bash {params.path}pad_bed.sh {params.pad} {params.i} {params.genome} {params.o}'
+
+rule recombine_insertions:
+    input:
+        annOutDir + '{caller}/bed_input/{sample}_SVunder10.padded.bed',
+        annOutDir + '{caller}/bed_input/{sample}_SVover10.bed'
+    output:
+        temp(annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed')
+    shell:
+        'cat {input} | sort -k1,1 -k2,2n -k3,3n --stable > {output}'
+
 rule compare_intra_SVs:
     '''
     This rule uses bedtools intersect to compare each caller output against
@@ -272,29 +320,19 @@ rule compare_intra_SVs:
     I want.
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
-        dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_intra.uniq.bed', caller=CALLERS)
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_intra.uniq.padded.bed', caller=CALLERS)
         # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed', caller=CALLERS, sample=inputDict.keys())
         # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
-        annOutDir + '{caller}/intrachromosomal/{sample}.compare'
+        temp(annOutDir + '{caller}/intrachromosomal/{sample}.compare')
     params:
         overlap = crossCallerOverlap
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
         'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -f {params.overlap} -r -wao > {output}' 
         # would using -c instead of -wao obviate the following rule?  would have to do it on each caller one-by-one I think.  Not sure how this would work in a rule.
-
-rule compare_insertions:
-    '''
-    For any SVs with <=10 bp between reported breakpoints, count them as insertions
-    and compare to one another.
-    '''
-    input:
-    output:
-    shell:
 
 rule parse_intra_comparison:
     '''
@@ -309,19 +347,30 @@ rule parse_intra_comparison:
     input:
         annOutDir + '{caller}/intrachromosomal/{sample}.compare'
     output:
-        annOutDir + '{caller}/intrachromosomal/{sample}.compare.summary'
+        temp(annOutDir + '{caller}/intrachromosomal/{sample}.compare.summary')
     run:
         svDict = {}
+        matchDict = {}
         with open(str(input), 'r') as f:
             for line in f:
                 fields = line.split()
-                key, values = fields[3], fields[0:3]
+                key, values, match = fields[3], fields[0:3], fields[5:7]  # key is line number, fields are first SV coords, match are matching SV coords
                 values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
                 if key not in svDict:
                     svDict[key] = values
                 for i in range(0, len(CALLERS)):
-                    if CALLERS[i] in fields[4]:
+                    if CALLERS[i] in fields[4] and wildcards.caller != CALLERS[i]:
                         svDict[key][i+3] += 1
+                        # find outer boundaries of matching SV pair:
+                        leftOuter = fields[1]
+                        rightOuter = fields[2]
+                        if int(leftOuter) > int(fields[6]):
+                            leftOuter = fields[6]
+                        if int(rightOuter) < int(fields[7]):
+                            rightOuter = fields[7]
+                        matchDict[key].append(leftOuter + ":" + rightOuter)
+                    elif wildcards.caller == CALLERS[i]:
+                        svDict[key][i+3] = "na"  # write na for self-caller matches
         with open(str(output), 'w') as out:
             out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'line_num']) + '\n')  # write header
             int_svDict = {int(k) : v for k, v in svDict.items()}
@@ -329,7 +378,8 @@ rule parse_intra_comparison:
                 for i in range(3, (len(CALLERS) + 3)):  # count the number of callers with at least one overlapping hit
                     if values[i] > 0:
                         int_svDict[key][-1] += 1
-                out.write('\t'.join(str(x) for x in values + [key]) + '\n')  # write dict numerically sorted by keys (line numbers)
+                matchCoords = ','.join(str(m) for m in matchDict[key].values())
+                out.write('\t'.join(str(x) for x in values + [key]) + matchCoords + '\n')  # write dict numerically sorted by keys (line numbers)
 
 rule pad_inter_chrom_ends:
     '''
@@ -338,12 +388,12 @@ rule pad_inter_chrom_ends:
         end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
         end2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.bed'
     output:
-        end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
-        end2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed'
+        end1 = temp(annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed'),
+        end2 = temp(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed')
     params:
         genome = execDir + 'annotation/human_g1k_v37.genome',
         pad = interchromPad,
-        path = execDir + 'scripts/'
+        path = execBindPath + 'scripts/'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
@@ -361,7 +411,7 @@ rule compare_inter_chr_end1:
         # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
         # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
-        annOutDir + '{caller}/interchromosomal/{sample}_end1.compare'
+        temp(annOutDir + '{caller}/interchromosomal/{sample}_end1.compare')
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
@@ -378,7 +428,7 @@ rule compare_inter_chr_end2:
         dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_end2.uniq.padded.bed', caller=CALLERS)
         # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
-        annOutDir + '{caller}/interchromosomal/{sample}_end2.compare'
+        temp(annOutDir + '{caller}/interchromosomal/{sample}_end2.compare')
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
@@ -462,10 +512,10 @@ rule query_genomic_context:
     Output format: chr start end line_num count_of_intersecting_SVs
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
         db = genomicContextPath + '{genomicContextFile}.bed'
     output:
-        annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
+        temp(annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}')
     params:
         overlap = genContextOverlap
     singularity:
@@ -546,10 +596,10 @@ rule query_public_datasets:
     #TODO: think about whether there are any other fields that would be helpful here
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
         db = publicDatasetsPath + '{publicDataFile}.bed'
     output:
-        annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
+        temp(annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}')
     params:
         overlap = publicDataOverlap
     singularity:
@@ -609,10 +659,10 @@ rule find_intersected_genes:
     #TODO do for intra and inter (need to think about how inter would work...list all genes affected?  just the fused genes?)
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.bed',
+        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
         db = genesPath + '{geneset}.bed'
     output:
-        annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'
+        temp(annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}')
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
@@ -656,14 +706,9 @@ rule add_annotation:
         'paste {input.summ} {input.db1} {input.db2} {input.db3} | sed \"s/-1/\./\" > {output}'
 #TODO: confirm by hand that these intermediate files are all sorted by line number!
 
-# # rule add_counts_to_orig:
-# #     input:
-# #         annOutDir + '{caller}/{sample}.compare.summary'
-# #         annOutDir + 'delly/{sample}_all.txt'
-# #         f = annInDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
-# #         f = annInDir + 'manta_TN/{sample}/results/variants/somaticSV.vcf.gz' if manta else ''
-# #         f = annInDir + 'svaba_TN/calls/{sample}.svaba.somatic.sv.vcf' if svaba else ''
-# #     output:
-# #         df
-# #     shell:
-# #         awk '{FS=OFS="\t"}{print $0, NR}' $annFile
+rule create_superset:
+    input:
+    output:
+    shell:
+
+

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-# dellyWkngDir = parentDir + 'delly_TN/'
 dellyWkngDir = 'delly_TN/'  # this is made within the parentDir (AKA outDir from the config file)
 
 TYPES = ['DEL', 'DUP', 'INV', 'BND', 'INS']
@@ -20,12 +19,12 @@ rule delly_call:
         t = get_tumor_bam_container,
         n = get_normal_bam_container,
         o = outputBindPath + dellyWkngDir + 'calls/{sample}_{type}.bcf'
-    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-7-9'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
     shell:
         'delly call \
             -t {params.tp} \
             -o {params.o} \
-            -g {params.ref} \
+            -g {params.r} \
             {params.n} {params.t}'
             #-x /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/sv_callers/delly/excludeTemplates/human.hg19.excl.tsv \
             # exclude file?
@@ -39,13 +38,14 @@ rule delly_create_tsv:
     output:
         dellyWkngDir + 'somatic/{sample}_samples.tsv'
     params:
+        path = execBindPath + 'scripts/',
         t = get_tumor_bam_container,
         n = get_normal_bam_container,
         o = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv'
-    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-7-9'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'create_tsv.sh {params.t} tumor {params.o};'
-        'create_tsv.sh {params.n} control {params.o}'
+        '{params.path}create_tsv.sh {params.t} tumor {params.o};'
+        '{params.path}create_tsv.sh {params.n} control {params.o}'
     # tab-delimited sample description file where the first column is the sample id (as in the VCF/BCF file) and the second column is either tumor or control
 
 rule delly_pre_filter:
@@ -56,17 +56,17 @@ rule delly_pre_filter:
         dellyWkngDir + 'somatic/{sample}_{type}.bcf'
     params:
         tp = '{type}',
-        tsv = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv'
+        tsv = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv',
         bcf = outputBindPath + dellyWkngDir + 'calls/{sample}_{type}.bcf',
         o = outputBindPath + dellyWkngDir + 'somatic/{sample}_{type}.bcf'
-    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-7-9'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
     shell:
         'delly filter \
-            -t {params.tp} \
             -f somatic \
             -o {params.o} \
             -s {params.tsv} \
             {params.bcf}'
+            # remove for v 0.8.1: -t {params.tp} \
             # tab-delimited sample description file where the first column is the sample id (as in the VCF/BCF file) and the second column is either tumor or control
 
 rule delly_combine_output:
@@ -75,12 +75,20 @@ rule delly_combine_output:
     output:
         dellyWkngDir + 'somatic/{sample}_all.txt'
     params:
-        i = expand(outputBindPath + dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES), 
+        #i = expand(outputBindPath + dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES), 
+        # Note about why double curly braces won't work in params section: 
+        # https://bitbucket.org/snakemake/snakemake/issues/584/unable-to-escape-curly-braces-in-params
+        i1 = outputBindPath + dellyWkngDir + 'somatic/{sample}_DEL.bcf', 
+        i2 = outputBindPath + dellyWkngDir + 'somatic/{sample}_DUP.bcf', 
+        i3 = outputBindPath + dellyWkngDir + 'somatic/{sample}_INV.bcf', 
+        i4 = outputBindPath + dellyWkngDir + 'somatic/{sample}_BND.bcf', 
+        i5 = outputBindPath + dellyWkngDir + 'somatic/{sample}_INS.bcf', 
         o = outputBindPath + dellyWkngDir + 'somatic/{sample}_all.txt'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bcftools_1-9'
     shell:
-        'bcftools concat -a {params.i} | sort -k1,1 -k2,2n > {params.o}'
+        'bcftools concat -a {params.i1} {params.i2} {params.i3} {params.i4} {params.i5} | sort -k1,1 -k2,2n > {params.o}'
+
 
 rule delly_list_output_files:
     input:

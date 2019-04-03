@@ -1,11 +1,10 @@
 #### Basic analysis parameters ####
-
 analysisMode: 'TN'  # TN, TO, germline, de_novo
 callers:            # available callers: svaba, breakdancer, delly, manta
 - svaba
 - breakdancer
-# - delly
-# - manta
+- delly
+- manta
 runMode:            # set only one mode to "yes"
   callAndAnnotate: no
   callOnly: yes
@@ -14,12 +13,13 @@ runMode:            # set only one mode to "yes"
 annotateFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/chr5_list_output_test/SV_files_for_annotation.txt' # only needed if in annotateOnly mode
 annotationParams:
   interchromPadding: 50       # base pairs to add on either side of the breakend to be used to find overlap when comparing inter-chromosomal SVs
-  insertionPadding: 500       # NEED TO IMPLEMENT base pairs to add on either side of an insertion to find overlap when comparing across callers
+  insertionPadding: 500       # base pairs to add on either side of an insertion to find overlap when comparing across callers and annotating
   crossCallerOverlap: 0.7     # minimum reciprocal overlap required to count as an intersection in other callers' data on the same subject
   genomicContextOverlap: 0.7  # what % of an SV must reside in a queried region (repeat, segdup, centro/telomeric) to count as an intersection
   publicDataOverlap: 0.7      # minimum reciprocal overlap required to count as an intersection (DGV, ClinVar, ClinGen, 1KG)
 refGenome: '/DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/hg19_canonical_correct_chr_order.fa' # for testing TN
 genomeBuild: 'hg19'               # hg19 (chr) or b37 (no chr)
+
 
 #### Samples to analyze ####
 inFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input/tests_chr5bams.txt'  # for testing TN
@@ -28,24 +28,24 @@ inFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_
   # or, if germline, must contain sample name and bam
   # or, if tumor-only, must contain tumor bam...and PON?
   # ALSO, if the callers available have differing capabilities, be sure to have a check in the snakefile (e.g. if delly can't do tumor-only, check for delly=yes and react appropriately in the TO snakefile)
-inDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input'
 
 
 #### Directories ####
-execDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev'  # where the snakfiles are
+inDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input'
+execDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev'  # where the snakefiles are
 outDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out'
 logDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs'
 tempDir: '/ttemp/ballewbj/sv'
 
 
 #### Cluster parameters ####
-clusterMode: 'qsub -V -S /bin/sh -q long.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs -j y'  # 'local' or provide the cluster submission string you want to use; can also put 'unlock' to run snakemake in --unlock mode
+clusterMode: 'qsub -V -S /bin/sh -q research.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs -j y'  # 'local' or provide the cluster submission string you want to use; can also put 'unlock' to run snakemake in --unlock mode
 maxNumJobs: 8  # n/a for clusterMode = local
 maxThreads:  # n/a for clusterMode = local  # must assign a thread number for each of the callers listed above.  used to assign "slots" to snakefiles (qsub -pe by_node $maxThreads) and "threads" in jobs that can use multi-threading (e.g. manta, svaba, parts of meerkat)
 - 4
 - 1
-# - 1
-# - 4
+- 1
+- 4
 
 
 #### Caller-specific parameters ####

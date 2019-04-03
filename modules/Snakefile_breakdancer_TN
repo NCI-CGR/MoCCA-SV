@@ -38,20 +38,13 @@ rule breakdancer_bam_qc:
         t2 = temp(breakdancerWkngDir + 'config/{sample}.t2'),
         t3 = temp(breakdancerWkngDir + 'config/{sample}.t3')
     params:
-        t = get_tumor_bam_container,
-        n = get_normal_bam_container,
-        c = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
-        t1 = outputBindPath + breakdancerWkngDir + 'config/{sample}.t1',
-        t2 = outputBindPath + breakdancerWkngDir + 'config/{sample}.t2',
-        t3 = outputBindPath + breakdancerWkngDir + 'config/{sample}.t3',
-        o = outputBindPath + breakdancerWkngDir + 'config/{sample}.config.qc'
-    singularity:
-        'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
+        path = execBindPath + 'scripts/'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'breakdancer_cfg_qc.sh {params.c} {params.t1};'
-        'breakdancer_qc.sh {params.n} {params.c} {params.t2};'
-        'breakdancer_qc.sh {params.t} {params.c} {params.t3};'
-        'cat {params.t1} {params.t2} {params.t3} > {params.o}'
+        '{params.path}breakdancer_cfg_qc.sh {input.c} {output.t1};'
+        '{params.path}breakdancer_qc.sh {input.n} {input.c} {output.t2};'
+        '{params.path}breakdancer_qc.sh {input.t} {input.c} {output.t3};'
+        'cat {output.t1} {output.t2} {output.t3} > {output.o}'
 
 rule breakdancer_run_per_chrom:
     input:

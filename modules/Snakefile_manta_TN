@@ -172,14 +172,14 @@ rule manta_list_output_files:
 
 rule manta_merge_list:
     input:
-        expand(mantaWkngDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
-        expand(mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
-        expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
-        expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
-        expand(mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
+        i1 = expand(mantaWkngDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
+        i2 = expand(mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
+        i3 = expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
+        i4 = expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
+        i5 = expand(mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
         # don't actually need all these above inputs for this step, but I want a uniform rule all with just the last file so these are here now.
-        expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
+        i6 = expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
     output:
         parentDir + 'SV_files_for_annotation_manta.txt'
     shell:
-        'cat {input} | sort | sed "1s/^/sample manta\\n/" > {output}'
+        'cat {input.i6} | sort | sed "1s/^/sample manta\\n/" > {output}'

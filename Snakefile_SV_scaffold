@@ -225,7 +225,7 @@ if callOnly or callAndAnnotate:
                             inputDict[l[0]].append(l[1])
                         else:
                             inputDict[l[0]] = [l[1]]
-                        print(inputDict)
+                        # print(inputDict)
             with open(str(output), 'w') as out:
                 for key, values in inputDict.items(): 
                     out.write(' '.join([key] + [str(x) for x in values]) + '\n')

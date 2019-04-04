@@ -259,6 +259,8 @@ rule separate_insertions:
     output:
         o1 = temp(annOutDir + '{caller}/bed_input/{sample}_SVunder10.bed'),
         o2 = temp(annOutDir + '{caller}/bed_input/{sample}_SVover10.bed')
+    params:
+        path = execDir + 'scripts/'
     shell:
         'bash {params.path}separate_insertions.sh {input} {output.o1} {output.o2}'
 
@@ -281,8 +283,8 @@ rule pad_insertions:
         genome = execBindPath + 'annotation/human_g1k_v37.genome',
         pad = insertionPad,
         path = execBindPath + 'scripts/',
-        i = outBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_SVunder10.bed',
-        o = outBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_SVunder10.padded.bed'
+        i = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_SVunder10.bed',
+        o = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_SVunder10.padded.bed'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
@@ -349,8 +351,8 @@ rule parse_intra_comparison:
     output:
         temp(annOutDir + '{caller}/intrachromosomal/{sample}.compare.summary')
     run:
-        svDict = {}
-        matchDict = {}
+        svDict = {}  # dict with line numbers as keys, genomic coords and caller counts as values
+        matchDict = {}  # dict with line numbers as keys, outer coords of overlapping pair of SVs as values
         with open(str(input), 'r') as f:
             for line in f:
                 fields = line.split()
@@ -359,9 +361,9 @@ rule parse_intra_comparison:
                 if key not in svDict:
                     svDict[key] = values
                 for i in range(0, len(CALLERS)):
-                    if CALLERS[i] in fields[4] and wildcards.caller != CALLERS[i]:
+                    if CALLERS[i] in fields[4] and wildcards.caller != CALLERS[i]:  # finds non-self caller matches based on the path and file with the matching sv, as reported by bedtools
                         svDict[key][i+3] += 1
-                        # find outer boundaries of matching SV pair:
+                        # find outer boundaries of overlapping SV pair:
                         leftOuter = fields[1]
                         rightOuter = fields[2]
                         if int(leftOuter) > int(fields[6]):
@@ -373,10 +375,10 @@ rule parse_intra_comparison:
                         svDict[key][i+3] = "na"  # write na for self-caller matches
         with open(str(output), 'w') as out:
             out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'line_num']) + '\n')  # write header
-            int_svDict = {int(k) : v for k, v in svDict.items()}
+            int_svDict = {int(k) : v for k, v in svDict.items()} # is this gonna be tripped up by having "na"?
             for key, values in sorted(int_svDict.items()):
                 for i in range(3, (len(CALLERS) + 3)):  # count the number of callers with at least one overlapping hit
-                    if values[i] > 0:
+                    if values[i] != 0:  # should count "na" too
                         int_svDict[key][-1] += 1
                 matchCoords = ','.join(str(m) for m in matchDict[key].values())
                 out.write('\t'.join(str(x) for x in values + [key]) + matchCoords + '\n')  # write dict numerically sorted by keys (line numbers)
@@ -706,9 +708,9 @@ rule add_annotation:
         'paste {input.summ} {input.db1} {input.db2} {input.db3} | sed \"s/-1/\./\" > {output}'
 #TODO: confirm by hand that these intermediate files are all sorted by line number!
 
-rule create_superset:
-    input:
-    output:
-    shell:
+# rule create_superset:
+#     input:
+#     output:
+#     shell:
 
 

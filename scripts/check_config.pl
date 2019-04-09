@@ -30,7 +30,6 @@ my $yaml;
 
 # Check that required directories exist
 my $execDir = check_dir($yaml->[0]->{execDir}); 
-my $inDir = check_dir($yaml->[0]->{inDir});
 
 my $numJobs = $yaml->[0]->{maxNumJobs};
 chomp($numJobs);
@@ -97,9 +96,10 @@ my $inFile = $yaml->[0]->{inFile};
 my $refGenome = $yaml->[0]->{refGenome};
 my @threads;
 if ($runMode !~ /annotateOnly/) {
-    # Check that required files exist    
+    # Check that required files and directories  exist    
     die "ERROR: $inFile is not readable or contains no data.\n" if (! -r $inFile || ! -s $inFile);
     die "ERROR: $refGenome does not exist.\n" if (! -e $refGenome);
+    my $inDir = check_dir($yaml->[0]->{inDir});
 
     # Check that the samples file has the correct # of columns
     check_samples_file($anMode, $inFile);

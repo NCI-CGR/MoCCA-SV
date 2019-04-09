@@ -7,9 +7,13 @@ callers:            # available callers: svaba, breakdancer, delly, manta
 - manta
 runMode:            # set only one mode to "yes"
   callAndAnnotate: no
-  callOnly: yes
-  annotateOnly: no
+  callOnly: no
+  annotateOnly: yes
+refGenome: '/DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/hg19_canonical_correct_chr_order.fa' # for testing TN
+genomeBuild: 'hg19'               # hg19 (chr) or b37 (no chr)
 
+
+#### Annotation parameters ####
 annotateFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/chr5_list_output_test/SV_files_for_annotation.txt' # only needed if in annotateOnly mode
 annotationParams:
   interchromPadding: 50       # base pairs to add on either side of the breakend to be used to find overlap when comparing inter-chromosomal SVs
@@ -17,8 +21,6 @@ annotationParams:
   crossCallerOverlap: 0.7     # minimum reciprocal overlap required to count as an intersection in other callers' data on the same subject
   genomicContextOverlap: 0.7  # what % of an SV must reside in a queried region (repeat, segdup, centro/telomeric) to count as an intersection
   publicDataOverlap: 0.7      # minimum reciprocal overlap required to count as an intersection (DGV, ClinVar, ClinGen, 1KG)
-refGenome: '/DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/hg19_canonical_correct_chr_order.fa' # for testing TN
-genomeBuild: 'hg19'               # hg19 (chr) or b37 (no chr)
 
 
 #### Samples to analyze ####
@@ -39,7 +41,7 @@ tempDir: '/ttemp/ballewbj/sv'
 
 
 #### Cluster parameters ####
-clusterMode: 'qsub -V -S /bin/sh -q research.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs -j y'  # 'local' or provide the cluster submission string you want to use; can also put 'unlock' to run snakemake in --unlock mode
+clusterMode: 'qsub -V -S /bin/sh -q long.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs -j y'  # 'local' or provide the cluster submission string you want to use; can also put 'unlock' to run snakemake in --unlock mode
 maxNumJobs: 8  # n/a for clusterMode = local
 maxThreads:  # n/a for clusterMode = local  # must assign a thread number for each of the callers listed above.  used to assign "slots" to snakefiles (qsub -pe by_node $maxThreads) and "threads" in jobs that can use multi-threading (e.g. manta, svaba, parts of meerkat)
 - 4

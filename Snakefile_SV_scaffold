@@ -133,14 +133,6 @@ if callOnly:
         include: 'modules/Snakefile_' + c + '_' + anMode
     rule all:
         input:
-            # ref + '.fai',
-            # ref + '.amb',
-            # ref + '.ann',
-            # ref + '.bwt',
-            # ref + '.pac',
-            # ref + '.sa',
-            # refDir + '/' + refNoExt + '.dict'
-            # expand(svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf', sample=bamDict.keys())
             parentDir + 'SV_files_for_annotation.txt'
 elif callAndAnnotate:
     for c in CALLERS:
@@ -225,7 +217,6 @@ if callOnly or callAndAnnotate:
                             inputDict[l[0]].append(l[1])
                         else:
                             inputDict[l[0]] = [l[1]]
-                        # print(inputDict)
             with open(str(output), 'w') as out:
                 for key, values in inputDict.items(): 
                     out.write(' '.join([key] + [str(x) for x in values]) + '\n')

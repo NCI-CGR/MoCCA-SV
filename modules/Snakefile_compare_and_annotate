@@ -64,13 +64,42 @@ def get_input_file(wildcards):
     i = firstLine.index(wildcards.caller)
     return l[i]
 
+def list_caller_outputs_intra(wildcards):
+    # because you can't do this:
+    # expand(annOutDir + '{caller}/bed_input/{{sample}}_intra.uniq.padded.bed', caller=CALLERS)
+    # in params section, as double curly braces are escaped and will print a single set of literal curlies
+    l = []
+    for c in CALLERS:
+        l.append(outputBindPath + 'compare_and_annotate/' + c + '/bed_input/' + wildcards.sample + '_intra.uniq.padded.bed')
+    return l
+
+def list_caller_outputs_end1(wildcards):
+    l = []
+    for c in CALLERS:
+        l.append(outputBindPath + 'compare_and_annotate/' + c + '/bed_input/' + wildcards.sample + '_end1.uniq.padded.bed')
+    return l
+
+def list_caller_outputs_end2(wildcards):
+    l = []
+    for c in CALLERS:
+        l.append(outputBindPath + 'compare_and_annotate/' + c + '/bed_input/' + wildcards.sample + '_end2.uniq.padded.bed')
+    return l
+
+
 GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
 PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
 GENESET_BEDS = ['RefSeq']
 
+# local paths
 genomicContextPath = execDir + 'annotation/genomic_context/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genomic_context/GRCh37_no_chr/'
 publicDatasetsPath = execDir + 'annotation/public_datasets/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/public_datasets/GRCh37_no_chr/'
 genesPath = execDir + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
+
+# bind points in container
+genomicContextBindPath = execBindPath + 'annotation/genomic_context/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genomic_context/GRCh37_no_chr/'
+publicDatasetsBindPath = execBindPath + 'annotation/public_datasets/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/public_datasets/GRCh37_no_chr/'
+genesBindPath = execBindPath + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
+
 
 
 rule convert_to_bed:
@@ -329,11 +358,14 @@ rule compare_intra_SVs:
     output:
         temp(annOutDir + '{caller}/intrachromosomal/{sample}.compare')
     params:
-        overlap = crossCallerOverlap
+        overlap = crossCallerOverlap,
+        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        dbs = list_caller_outputs_intra,
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{sample}.compare'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -f {params.overlap} -r -wao > {output}' 
+        'bedtools intersect -a {params.query} -b {params.dbs} -filenames -sorted -f {params.overlap} -r -wao > {params.out}' 
         # would using -c instead of -wao obviate the following rule?  would have to do it on each caller one-by-one I think.  Not sure how this would work in a rule.
 
 rule parse_intra_comparison:
@@ -356,10 +388,12 @@ rule parse_intra_comparison:
         with open(str(input), 'r') as f:
             for line in f:
                 fields = line.split()
-                key, values, match = fields[3], fields[0:3], fields[5:7]  # key is line number, fields are first SV coords, match are matching SV coords
+                # fields: chr, pos1, pos2, caller output line #, file source of match, match chr, match pos1, match pos2, match line #, # bases overlapping
+                key, values = fields[3], fields[0:3]  # key is line number, fields are first SV coords, match are matching SV coords
                 values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
                 if key not in svDict:
                     svDict[key] = values
+                    matchDict[key] = ['.']  # initialize match dict
                 for i in range(0, len(CALLERS)):
                     if CALLERS[i] in fields[4] and wildcards.caller != CALLERS[i]:  # finds non-self caller matches based on the path and file with the matching sv, as reported by bedtools
                         svDict[key][i+3] += 1
@@ -370,18 +404,23 @@ rule parse_intra_comparison:
                             leftOuter = fields[6]
                         if int(rightOuter) < int(fields[7]):
                             rightOuter = fields[7]
-                        matchDict[key].append(leftOuter + ":" + rightOuter)
+                        matchRegion = [fields[0] + ":" + leftOuter + "-" + rightOuter]
+                        if matchDict[key] == ['.']:
+                            matchDict[key] = matchRegion  # replace '.' with match region if there's a match
+                        else:
+                            matchDict[key] = matchDict[key] + matchRegion  # add on to a list if multiple matches
                     elif wildcards.caller == CALLERS[i]:
-                        svDict[key][i+3] = "na"  # write na for self-caller matches
+                        svDict[key][i+3] = 'na'  # write na for self-caller matches
         with open(str(output), 'w') as out:
-            out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'line_num']) + '\n')  # write header
+            out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'match_region', 'line_num']) + '\n')  # write header
             int_svDict = {int(k) : v for k, v in svDict.items()} # is this gonna be tripped up by having "na"?
             for key, values in sorted(int_svDict.items()):
                 for i in range(3, (len(CALLERS) + 3)):  # count the number of callers with at least one overlapping hit
                     if values[i] != 0:  # should count "na" too
                         int_svDict[key][-1] += 1
-                matchCoords = ','.join(str(m) for m in matchDict[key].values())
-                out.write('\t'.join(str(x) for x in values + [key]) + matchCoords + '\n')  # write dict numerically sorted by keys (line numbers)
+                matchDict[str(key)] = list(dict.fromkeys(matchDict[str(key)]))  # remove duplicate values
+                matchCoords = ','.join(str(m) for m in matchDict[str(key)])
+                out.write('\t'.join(str(x) for x in values + [matchCoords] + [key]) + '\n')  # write dict numerically sorted by keys (line numbers)
 
 rule pad_inter_chrom_ends:
     '''
@@ -393,15 +432,18 @@ rule pad_inter_chrom_ends:
         end1 = temp(annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed'),
         end2 = temp(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed')
     params:
-        genome = execDir + 'annotation/human_g1k_v37.genome',
+        genome = execBindPath + 'annotation/human_g1k_v37.genome',
         pad = interchromPad,
-        path = execBindPath + 'scripts/'
+        path = execBindPath + 'scripts/',
+        inEnd1 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end1.uniq.bed',
+        inEnd2 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end2.uniq.bed',
+        outEnd1 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        outEnd2 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end2.uniq.padded.bed'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
-        'bash {params.path}pad_bed.sh {params.pad} {input.end1} {params.genome} {output.end1};'
-        'bash {params.path}pad_bed.sh {params.pad} {input.end2} {params.genome} {output.end2}'
+        'bash {params.path}pad_bed.sh {params.pad} {params.inEnd1} {params.genome} {params.outEnd1};'
+        'bash {params.path}pad_bed.sh {params.pad} {params.inEnd2} {params.genome} {params.outEnd2}'
 
 rule compare_inter_chr_end1:
     '''
@@ -410,16 +452,16 @@ rule compare_inter_chr_end1:
     input:
         query = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
         dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_end1.uniq.padded.bed', caller=CALLERS)
-        # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
-        # the above would compare a given sample to all other samples in all other callers, not just the same sample across callers
     output:
         temp(annOutDir + '{caller}/interchromosomal/{sample}_end1.compare')
+    params:
+        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        dbs = list_caller_outputs_end1,
+        out = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{sample}_end1.compare'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
-        # 'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
+        'bedtools intersect -a {params.query} -b {params.dbs} -filenames -wao > {params.out}'
 
 rule compare_inter_chr_end2:
     '''
@@ -428,15 +470,16 @@ rule compare_inter_chr_end2:
     input:
         query = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         dbs = expand(annOutDir + '{caller}/bed_input/{{sample}}_end2.uniq.padded.bed', caller=CALLERS)
-        # dbs = expand(annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed', caller=CALLERS, sample=inputDict.keys())
     output:
         temp(annOutDir + '{caller}/interchromosomal/{sample}_end2.compare')
+    params:
+        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end2.uniq.padded.bed', 
+        dbs = list_caller_outputs_end2,
+        out = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{sample}_end2.compare'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.dbs} -filenames -wao > {output}'
-        # 'bedtools intersect -a {input.query} -b {input.dbs} -filenames -sorted -wao > {output}'
+        'bedtools intersect -a {params.query} -b {params.dbs} -filenames -wao > {params.out}'
 
 rule parse_inter_comparison:
     '''
@@ -475,13 +518,16 @@ rule parse_inter_comparison:
         with open(str(input.end1), 'r') as f1:
             for line in f1:
                 fields = line.split()
+                # fields: chr, pos1, pos2, caller output line #, file source of match, match chr, match pos1, match pos2, match line #, # bases overlapping
                 key, values = fields[3], fields[0:3]
                 values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
                 if key not in svDict:
                     svDict[key] = values
                 for i in range(0, len(CALLERS)):  # detect whether there are any overlapping occurences of end1
-                    if CALLERS[i] in fields[4]:
-                        svDict[key][i+3] = 1
+                    if CALLERS[i] in fields[4] and wildcards.caller != CALLERS[i]:
+                        svDict[key][i+3] = 1  # set to 1 to indicate a match
+                    elif wildcards.caller == CALLERS[i]:
+                        svDict[key][i+3] = 'na'  # write na for self-caller matches
         with open(str(input.end2), 'r') as f2:
             for line in f2:
                 fields = line.split()
@@ -491,12 +537,12 @@ rule parse_inter_comparison:
                     exit(1)
                 for i in range(0, len(CALLERS)):  # count overlapping occurences of end1 AND end2
                     if CALLERS[i] in fields[4] and svDict[key][i+3] == 1:
-                        svDict[key][i+3] = 2
+                        svDict[key][i+3] = 2  # set to 2 to indicate that both ends match
         with open(str(output), 'w') as out:
             out.write('\t'.join(['#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'line_num']) + '\n')  # write header
             for key, values in svDict.items():
                 for i in range(3, (len(CALLERS) + 3)):
-                    if values[i] == 2:
+                    if values[i] == 2 or values[i] == 'na':  # count callers reporting this sv, including self
                         svDict[key][i] = int(values[i] / 2)
                         svDict[key][-1] += 1
                     else:
@@ -519,12 +565,14 @@ rule query_genomic_context:
     output:
         temp(annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}')
     params:
-        overlap = genContextOverlap
+        overlap = genContextOverlap,
+        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        db = genomicContextBindPath + '{genomicContextFile}.bed',
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.db} -sorted -f {params.overlap} -c > {output}'
+        'bedtools intersect -a {params.query} -b {params.db} -sorted -f {params.overlap} -c > {params.out}'
         # removed -r because it doesn't need to be reciprocal - if 70% of a variant is in a repeat region, for example, it doesn't matter how much of the repeat region is covered
 
 # # see (https://www.ncbi.nlm.nih.gov/dbvar/content/human_hub/) for useful dbVar datasets
@@ -603,12 +651,14 @@ rule query_public_datasets:
     output:
         temp(annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}')
     params:
-        overlap = publicDataOverlap
+        overlap = publicDataOverlap,
+        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        db = publicDatasetsBindPath + '{publicDataFile}.bed',
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.db} -sorted -f {params.overlap} -r -wao > {output}'
+        'bedtools intersect -a {params.query} -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out}'
 
 
 # # rule generate_hit_list:
@@ -665,11 +715,14 @@ rule find_intersected_genes:
         db = genesPath + '{geneset}.bed'
     output:
         temp(annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}')
+    params:
+        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        db = genesBindPath + '{geneset}.bed',
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{geneset}_and_{sample}'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        #'module load bedtools/2.26.0;'
-        'bedtools intersect -a {input.query} -b {input.db} -sorted -wao > {output}'
+        'bedtools intersect -a {params.query} -b {params.db} -sorted -wao > {params.out}'
 
 rule format_intersected_genes:
     input:
@@ -702,7 +755,6 @@ rule add_annotation:
         db3 = expand(annOutDir + '{{caller}}/intrachromosomal/gene-{geneset}_and_{{sample}}', geneset=GENESET_BEDS),
         summ = annOutDir + '{caller}/intrachromosomal/{sample}.compare.summary'
     output:
-        # annOutDir + '{caller}/intrachromosomal/annotated_{sample}.compare.summary'
         annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison'
     shell:
         'paste {input.summ} {input.db1} {input.db2} {input.db3} | sed \"s/-1/\./\" > {output}'

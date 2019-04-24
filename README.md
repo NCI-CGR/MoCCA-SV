@@ -39,6 +39,7 @@ Select from the following callers in the configuration file under "callers":
 
 To add a caller, three new elements are required: a snakefile to run the calling, a caller_to_bed script to convert the output to bed format, and a container recipe file with the caller installed. Please see the developer's guide below for more details.
 
+
 ## User's guide
 
 ### I.  Input requirements
@@ -86,9 +87,26 @@ To add a caller, three new elements are required: a snakefile to run the calling
   A101 /path/to/SV_out1.vcf /path/to/A101.out
   ```
 
-### III.  SV comparison methods
+### III.  Comparison and annotation
 
-We employ two different methods to compare SVs across callers and to public SV databases.  For intra-chromosomal SVs, we use percent reciprocal overlap (e.g., to be considered comparable, SV1 must overlap at least X% of SV2, and SV2 must overlap at least X% of SV1).  For intra-chromosomal insertions, we first pad by a number of bases up- and down-stream, then apply percent reciprocal overlap.  For inter-chromosomal SVs, we look for overlap within a window surrounding each breakend.  See our publication (____) for additional details.  All parameters defining these comparisons are user-configurable; see subsequent section.
+#### A. SV comparison methods
+
+We employ two different methods to compare SVs across callers and to public SV databases.  For intra-chromosomal SVs, we use percent reciprocal overlap (e.g., to be considered comparable, SV1 must overlap at least X% of SV2, and SV2 must overlap at least X% of SV1).  For intra-chromosomal insertions, we first pad by a number of bases up- and down-stream, then apply percent reciprocal overlap.  For inter-chromosomal SVs, we look for overlap within a window surrounding each breakend.  
+
+#### B. Annotation
+
+We include three categories of annotation in the final output file:
+1. Genomic context (non-reciprocal percent overlap with regions in UCSC browser's RepeatMasker, SegDups, and Telomere/Centromere tracks)
+2. Public data (identity, as defined in section A, with SVs reported by 1000 Genomes, ClinGen, ClinVar, and DGV)
+  - Insertions (defined as SVs <10bp) in the public datasets have been padded by +/- 500bp
+  - Three public datasets are pulled from dbvar
+    - 1000 Genomes (estd219): 66k variant regions from healthy individuals in the 1000 Genomes Consortium Phase3 Integrated SV dataset
+    - ClinVar (nstd102): 765 SVs with clinical assertions
+    - ClinGen (nstd37): laboratory-submitted data - 33,378 SVs with clinical assertions as classified by the original submitter
+  - DGV data is from the relevant UCSC browser track and consists of intra-chromosomal SVs from healthy individuals
+3. Geneset (any amount of overlap with RefSeq transcripts/gene names)
+
+See our publication (____) for additional details.  Parameters defining these comparisons are user-configurable; see subsequent section.
 
 ### IV.  Editing the config.yaml
 
@@ -96,8 +114,8 @@ __Basic analysis parameters__
 
 - `analysisMode:` Enter one value for analysisMode (TN, TO, germline, de_novo)
 - `callers:` Select callers to run by providing a list in YAML format
-  - The name used for the caller in the config file must match (including case) the caller name used in `modules/Snakefile_<caller>_<runMode>` and in `scripts/<caller>_to_bed.sh`, e.g.:
-    modules/Snakefile_DELLY_TN, scripts/delly_to_bed.sh, config file 'Delly2': NO
+  - The name used for the caller in the config file must match (including case) the caller name used in `modules/Snakefile_<caller>_<runMode>` and in `scripts/<caller>_to_bed.sh`, e.g.:  
+    modules/Snakefile_DELLY_TN, scripts/delly_to_bed.sh, config file 'Delly2': NO  
     modules/Snakefile_delly_TN, scripts/delly_to_bed.sh, config file 'delly': YES
 - `runMode:` Select one runMode by setting one option to 'yes' and the others to 'no'
 - `refGenome:` Provide the full path and filename for a reference fasta
@@ -158,6 +176,59 @@ __Cluster parameters__
 
   - Note that for troubleshooting, you can re-run the command printed in this log with additional snakemake command line options, like `-n` for a dry run or `--dag ... | dot -Tsvg > dag.svg` to visualize the directed acyclic graph.  See snakemake documentation for more details.
 
+
+### VI. Output
+
+MoCCA-SV has two main outputs: SV calls from each caller, and the union of all callers for each sample along with comparison and annotation information.
+  1. Each caller run will write to its own directory (e.g. delly run in tumor/normal mode will create and write to a directory called `delly_TN`).  See the individual callers' documentation for descriptions of output.
+  2. Running in callAndAnnotate or callOnly modes will create the directory `compare_and_annotate`.  This directory contains the files `intrachromosomal_SVs_<sample>`, which contain the superset of SVs from all callers.  *NOTE: this is under development, and inter-chromosomal SVs are being integrated currently.*
+
+Example output directory structure is as follows.  Exact output will depend upon run mode and analysis mode selected.
+
+```
+|--- user/defined/output_dir/
+   |--- delly_TN/
+   |--- svaba_TN/
+   |--- logs/
+   |  |--- MoCCA-SV_<datetime>.out
+   |--- SV_files_for_annotation.txt
+   |--- compare_and_annotate/
+      |--- intrachromosomal_SVs_sampleA
+      |--- intrachromosomal_SVs_sampleB
+```
+Headers from file `intrachromosomal_SVs_<sample>`:
+
+|Field|Description|
+|---|---|
+|#CHROM|chromosome|
+|pos1|upstream breakend|
+|pos2|downstream breakend|
+|svaba|count of comparable SVs in svaba (based on % reciprocal overlap); "orig" if this SV originated from this caller|
+|breakdancer|count of comparable SVs in svaba (based on % reciprocal overlap); "orig" if this SV originated from this caller|
+|delly|count of comparable SVs in svaba (based on % reciprocal overlap); "orig" if this SV originated from this caller|
+|manta|count of comparable SVs in svaba (based on % reciprocal overlap); "orig" if this SV originated from this caller|
+|caller_count|total number of callers reporting a comparable SV at this position|
+|match_region|chrom and outer coordinates of a matching pair of SVs in the format chr:end1-end2; serves as a key to find pairwise matches in the superset call data|
+|RepeatMasker|count of overlaps between SV and repeat regions|
+|SegDups|count of overlaps between SV and segmentally duplicated regions|
+|Telo_Centro|count of overlaps between SV and telomeric or centromeric regions|
+|1KG_sv_type|SV type reported for each overlapping SV (e.g. "copy_number_gain")|
+|1KG_pheno|phenotype reported for each overlapping SV ("healthy" for 1000 Genomes)|
+|1KG_clinical_assertion|determination of clinical significance of SV ("na" for 1000 Genomes)|
+|ClinGen_sv_type|SV type reported for each overlapping SV (e.g. "copy_number_gain")|
+|ClinGen_pheno|phenotype reported for each overlapping SV (e.g. "Developmental_delay")|
+|ClinGen_clinical_assertion|determination of clinical significance of SV (e.g. "Benign" or "Pathogenic")|
+|ClinVar_sv_type|SV type reported for each overlapping SV (e.g. "copy_number_gain")|
+|ClinVar_pheno|phenotype reported for each overlapping SV (e.g. "Developmental_delay")|
+|ClinVar_clinical_assertion|determination of clinical significance of SV (e.g. "Benign" or "Pathogenic")|
+|DGV_sv_type|SV type reported for each overlapping SV (e.g. "copy_number_gain")|
+|DGV_pheno|phenotype reported for each overlapping SV ("healthy" for DGV)|
+|DGV_clinical_assertion|determination of clinical significance of SV ("na" for DGV)|
+|RefSeq_transcripts|semicolon-delimited list of transcripts overlapping the SV|
+|RefSeq_genes|semicolon-delimited list of gene names overlapping SV|
+|Original_caller_output|all fields from the original caller's output, delimited by a double underscore "__"|
+
+*Think about differences for inter-chrom SVs, e.g. instead of all overlapping genes, just report those that the break ends reside in?  or all genes within x bp?*
 
 ## Developer's guide
 

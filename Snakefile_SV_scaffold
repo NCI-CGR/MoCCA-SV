@@ -141,14 +141,15 @@ elif callAndAnnotate:
     rule all:
         input:
             expand(annOutDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=bamDict.keys()),
-            expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=bamDict.keys())
+            expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=bamDict.keys()),
+            expand(annOutDir + 'intrachromosomal_SVs_{sample}', sample=inputDict.keys())
 elif annotateOnly:
     include: 'modules/Snakefile_compare_and_annotate'
     rule all:
         input:
             expand(annOutDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=inputDict.keys()),
-            expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=inputDict.keys())
-
+            expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=inputDict.keys()),
+            expand(annOutDir + 'intrachromosomal_SVs_{sample}', sample=inputDict.keys())
 
 if callOnly or callAndAnnotate:
     rule bwa_index_ref:

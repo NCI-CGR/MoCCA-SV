@@ -65,9 +65,12 @@ def get_input_file(wildcards):
     return l[i]
 
 def list_caller_outputs_intra(wildcards):
-    # because you can't do this:
-    # expand(annOutDir + '{caller}/bed_input/{{sample}}_intra.uniq.padded.bed', caller=CALLERS)
-    # in params section, as double curly braces are escaped and will print a single set of literal curlies
+    '''
+    You can't do this:
+    expand(annOutDir + '{caller}/bed_input/{{sample}}_intra.uniq.padded.bed', caller=CALLERS)
+    in params section, as double curly braces are escaped and will print a single set of literal curlies.
+    This and the subsequent two functions are my work-around.
+    '''
     l = []
     for c in CALLERS:
         l.append(outputBindPath + 'compare_and_annotate/' + c + '/bed_input/' + wildcards.sample + '_intra.uniq.padded.bed')
@@ -86,6 +89,7 @@ def list_caller_outputs_end2(wildcards):
     return l
 
 
+# Annotation files
 GENOMIC_CONTEXT_BEDS = ['RepeatMasker', 'SegDups', 'Telo_Centro']
 PUBLIC_DATA_BEDS = ['1KG', 'ClinGen', 'ClinVar', 'DGV']
 GENESET_BEDS = ['RefSeq']
@@ -427,6 +431,8 @@ rule parse_intra_comparison:
 
 rule pad_inter_chrom_ends:
     '''
+    Add padding to each end of an interchromosomal SV to provide
+    the window when looking for overlap.
     '''
     input:
         end1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.bed',
@@ -566,20 +572,31 @@ rule query_genomic_context:
     Output format: chr start end line_num count_of_intersecting_SVs
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        intra = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        inter1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        inter2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         db = genomicContextPath + '{genomicContextFile}.bed'
     output:
-        temp(annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}')
+        temp(annOutDir + '{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'),
+        temp(annOutDir + '{caller}/interchromosomal/{genomicContextFile}_and_{sample}_end1'),
+        temp(annOutDir + '{caller}/interchromosomal/{genomicContextFile}_and_{sample}_end2')
     params:
         overlap = genContextOverlap,
-        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        intra = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        inter1 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        inter2 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         db = genomicContextBindPath + '{genomicContextFile}.bed',
-        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{genomicContextFile}_and_{sample}'
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{genomicContextFile}_and_{sample}',
+        out1 = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{genomicContextFile}_and_{sample}_end1',
+        out2 = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{genomicContextFile}_and_{sample}_end2'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a {params.query} -b {params.db} -sorted -f {params.overlap} -c > {params.out}'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -sorted -f {params.overlap} -c > {params.out};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter1}) -b {params.db} -sorted -f {params.overlap} -c > {params.out1};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter2}) -b {params.db} -sorted -f {params.overlap} -c > {params.out2}'
         # removed -r because it doesn't need to be reciprocal - if 70% of a variant is in a repeat region, for example, it doesn't matter how much of the repeat region is covered
+
 
 # # see (https://www.ncbi.nlm.nih.gov/dbvar/content/human_hub/) for useful dbVar datasets
 
@@ -650,30 +667,43 @@ rule query_public_datasets:
 
     # TODO: check DGV for insertions that need padding
     #TODO: think about whether there are any other fields that would be helpful here
+
+    # Not implementing for inter-chrom SVs now because I don't think any of these
+    databases report those.  Need to double-check that this is true.
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        intra = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        # inter1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        # inter2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         db = publicDatasetsPath + '{publicDataFile}.bed'
     output:
-        temp(annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}')
+        temp(annOutDir + '{caller}/intrachromosomal/{publicDataFile}_and_{sample}')#,
+        # temp(annOutDir + '{caller}/interchromosomal/{publicDataFile}_and_{sample}_end1'),
+        # temp(annOutDir + '{caller}/interchromosomal/{publicDataFile}_and_{sample}_end2')
     params:
         overlap = publicDataOverlap,
-        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        intra = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        # inter1 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        # inter2 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         db = publicDatasetsBindPath + '{publicDataFile}.bed',
-        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{publicDataFile}_and_{sample}'
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{publicDataFile}_and_{sample}',
+        # out1 = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{publicDataFile}_and_{sample}_end1',
+        # out2 = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{publicDataFile}_and_{sample}_end2'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a {params.query} -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out}'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out}'
+        # 'bedtools intersect -a {params.inter1} -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out1};'
+        # 'bedtools intersect -a {params.inter2} -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out2}'
 
-
-# # rule generate_hit_list:
+# Right now, I only provide cross-caller comparisons.  Should I consider adding
+# some level of cross-sample analysis?  One possibility: use multiinter on a 
+# whole cohort to find likely technical false positives.
+# rule generate_hit_list:
 #     '''
 #     Use bedtools multiinter to find regions that are covered in all/most? samples (by all/most callers?)
 #     Then make a second rule to annotate files based on this list
 #     '''
-
-# # may want to use multiinter on a whole cohort to find likely technical false positives!
 
 rule format_genomic_context_counts:
     input:
@@ -714,21 +744,32 @@ rule format_public_data_hits:
 
 rule find_intersected_genes:
     '''
-    #TODO do for intra and inter (need to think about how inter would work...list all genes affected?  just the fused genes?)
+    Finds genes that intersect with intra-chrom SVs or with
+    the window around either inter-chrom SV breakend.
     '''
     input:
-        query = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        intra = annOutDir + '{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        inter1 = annOutDir + '{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        inter2 = annOutDir + '{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         db = genesPath + '{geneset}.bed'
     output:
-        temp(annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}')
+        temp(annOutDir + '{caller}/intrachromosomal/{geneset}_and_{sample}'),
+        temp(annOutDir + '{caller}/interchromosomal/{geneset}_and_{sample}_end1'),
+        temp(annOutDir + '{caller}/interchromosomal/{geneset}_and_{sample}_end2')
     params:
-        query = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        intra = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_intra.uniq.padded.bed',
+        inter1 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end1.uniq.padded.bed',
+        inter2 = outputBindPath + 'compare_and_annotate/{caller}/bed_input/{sample}_end2.uniq.padded.bed',
         db = genesBindPath + '{geneset}.bed',
-        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{geneset}_and_{sample}'
+        out = outputBindPath + 'compare_and_annotate/{caller}/intrachromosomal/{geneset}_and_{sample}',
+        out1 = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{geneset}_and_{sample}_end1',
+        out2 = outputBindPath + 'compare_and_annotate/{caller}/interchromosomal/{geneset}_and_{sample}_end2'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a {params.query} -b {params.db} -sorted -wao > {params.out}'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -sorted -wao > {params.out};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter1}) -b {params.db} -sorted -wao > {params.out1};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter2}) -b {params.db} -sorted -wao > {params.out2}'
 
 rule format_intersected_genes:
     input:
@@ -767,6 +808,10 @@ rule add_annotation:
 #TODO: confirm that these intermediate files are all sorted by line number!
 
 rule retrieve_caller_details:
+    '''
+    Add on the output for a given SV from the original caller as the last column
+    in the file.  Original output is concatenated, with the delimiter of "__".
+    '''
     input:
         i1 = annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison',
         i2 = annOutDir + '{caller}/bed_input/{sample}_orig'

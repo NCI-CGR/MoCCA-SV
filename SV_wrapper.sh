@@ -55,11 +55,12 @@ sing_arg='"'$(echo "-B ${inDir}:/input,${tempDir}:/scratch,${refDir}:/ref,${outD
 
 cmd=""
 if [ "$clusterMode" == '"'"local"'"' ]; then
-    cmd="conf=$configFile snakemake -pn -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete &> ${logDir}/MoCCA-SV_${DATE}.out"
+    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete &> ${logDir}/MoCCA-SV_${DATE}.out"
 elif [ "$clusterMode" = '"'"unlock"'"' ]; then  # put in a convenience unlock
     cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --unlock"
 else
-    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait 300 &> ${logDir}/MoCCA-SV_${DATE}.out"
+    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --nt --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait 300 &> ${logDir}/MoCCA-SV_${DATE}.out"
+    # --nt - keep temp files
 fi
 
 echo "Command run: $cmd"

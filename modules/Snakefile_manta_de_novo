@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+
+mantaWkngDir = 'manta_de_novo/'
+mantaTempDir = config['tempDir'].rstrip('/') + '/manta_de_novo/'
+i = CALLERS.index("manta")
+mantaNt = config['maxThreads'][i]
+
+rule manta_filter_p1_bams:
+    input:
+        p1 = get_parent1_bam
+    output:
+        filtP1 = mantaWkngDir + 'filtered_bams/{sample}_p1.bam'
+    params:
+        path = execBindPath + 'scripts/',
+        p1 = get_parent1_bam_container,
+        filtP1 = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_p1.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
+    shell:
+        '{params.path}filter_bams.sh {params.p1} {params.filtP1}'
+
+rule manta_filter_p2_bams:
+    input:
+        p2 = get_parent2_bam
+    output:
+        filtP2 = mantaWkngDir + 'filtered_bams/{sample}_p2.bam'
+    params:
+        path = execBindPath + 'scripts/',
+        p2 = get_parent2_bam_container,
+        filtP2 = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_p2.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
+    shell:
+        '{params.path}filter_bams.sh {params.p2} {params.filtP2}'
+
+rule manta_filter_kid_bams:
+    input:
+        kid = get_kid_bam
+    output:
+        filtKid = mantaWkngDir + 'filtered_bams/{sample}_kid.bam'
+    params:
+        path = execBindPath + 'scripts/',
+        kid = get_kid_bam_container,
+        filtKid = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_kid.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
+    shell:
+        '{params.path}filter_bams.sh {params.kid} {params.filtKid}'
+
+rule manta_index_filtered_bams:
+    input:
+        filtP1 = mantaWkngDir + 'filtered_bams/{sample}_p1.bam',
+        filtP2 = mantaWkngDir + 'filtered_bams/{sample}_p2.bam',
+        filtKid = mantaWkngDir + 'filtered_bams/{sample}_kid.bam'
+    output:
+        p1 = mantaWkngDir + 'filtered_bams/{sample}_p1.bam.bai',
+        p2 = mantaWkngDir + 'filtered_bams/{sample}_p2.bam.bai',
+        kid = mantaWkngDir + 'filtered_bams/{sample}_kid.bam.bai'
+    params:
+        filtP1 = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_p1.bam',
+        filtP2 = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_p2.bam',
+        filtKid = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_kid.bam'
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
+    shell:
+        'samtools index {params.filtP1};'
+        'samtools index {params.filtP2};'
+        'samtools index {params.filtKid}'
+
+rule manta_create_run_script:
+    input:
+        p1 = mantaWkngDir + 'filtered_bams/{sample}_p1.bam',
+        p2 = mantaWkngDir + 'filtered_bams/{sample}_p2.bam',
+        kid = mantaWkngDir + 'filtered_bams/{sample}_kid.bam',
+        p1_i = mantaWkngDir + 'filtered_bams/{sample}_p1.bam.bai',
+        p2_i = mantaWkngDir + 'filtered_bams/{sample}_p2.bam.bai',
+        kid_i = mantaWkngDir + 'filtered_bams/{sample}_kid.bam.bai',
+        ref = ref,
+        fai = ref + '.fai'
+    output:
+        outFile = mantaTempDir + '{sample}/runWorkflow.py'
+    params:
+        outParam = tempBindPath + 'manta_de_novo/{sample}',
+        p1 = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_p1.bam',
+        p2 = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_p2.bam',
+        kid = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_kid.bam',
+        ref = refBindPath + refFile
+    singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
+    shell:
+        'configManta.py \
+            --bam {params.kid} \
+            --bam {params.p1} \
+            --bam {params.p2} \
+            --referenceFasta {params.ref} \
+            --runDir {params.outParam}'
+
+rule manta_call:
+    '''
+    '''
+    input:
+        mantaTempDir + '{sample}/runWorkflow.py'
+    output:
+        mantaTempDir + '{sample}/workspace/pyflow.data/logs/pyflow_log.txt',
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    threads: mantaNt
+    params:
+        tempBindPath + 'manta_de_novo/{sample}/runWorkflow.py'
+    singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
+    shell:
+        '{params} -m local -j {threads}' 
+
+rule manta_move_call_files_pt1:
+    input:
+        mantaTempDir + '{sample}/runWorkflow.py'
+    output:
+        mantaWkngDir + '{sample}/runWorkflow.py'
+    params:
+        wDir = mantaWkngDir + '{sample}/'
+    shell:
+        'mv {input} {params.wDir}'
+
+rule manta_move_call_files_pt2:
+    input:
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
+    output:
+        mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
+    params:
+        wDir = mantaWkngDir + '{sample}/results/variants/'
+    shell:
+        'mv {input} {params.wDir}'
+
+rule manta_move_call_files_pt3:
+    input:
+        mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    output:
+        mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+    params:
+        wDir = mantaWkngDir + '{sample}/results/stats/'
+    shell:
+        'mv {input} {params.wDir}'
+
+rule manta_de_novo_scoring:
+    input:
+        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz'
+    output:
+        mantaWkngDir + '{sample}/results/variants/diploidSV.de_novo.vcf'
+    params:
+        i = outputBindPath + mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        i_gunzip = outputBindPath + mantaWkngDir + '{sample}/results/variants/diploidSV.vcf',
+        p1 = get_parent1_bam,
+        p2 = get_parent2_bam,
+        kid = get_kid_bam
+    singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
+    shell:
+        'gunzip {params.i};'
+        'libexec/denovo_scoring.py {params.i_gunzip} {params.kid} {params.p1} {params.p2}'
+
+rule manta_de_novo_filtering:
+    input:
+        mantaWkngDir + '{sample}/results/variants/diploidSV.de_novo.vcf'
+    output:
+        mantaWkngDir + '{sample}/results/variants/diploidSV.de_novo_only.vcf'
+    shell:
+        "awk '$1~/^#/{{print $0; NEXT}} $10~/.*:60$/ && $7~/PASS/{{print $0}}' {input} > {output}"
+
+rule manta_list_output_files:
+    input:
+        mantaWkngDir + '{sample}/results/variants/diploidSV.de_novo_only.vcf'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_manta.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
+    shell:
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
+
+rule manta_merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_manta.txt'
+    shell:
+        'cat {input} | sort | sed "1s/^/sample manta\\n/" > {output}'

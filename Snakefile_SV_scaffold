@@ -48,23 +48,30 @@ if anMode == 'TN':
     with open(bamList) as f:
         for line in f:
             (pair, tumor, normal) = line.split()
+            if pair in bamDict.keys():
+                sys.exit('ERROR: duplicate pair IDs detected in' + bamList)
             containerDict[pair] = (inputBindPath + tumor, inputBindPath + normal)
             bamDict[pair] = (dataDir + tumor, dataDir + normal)
 elif (anMode == 'germline') or (anMode == 'TO'):
     with open(bamList) as f:
         for line in f:
             (subject, bam) = line.split()
+            if subject in bamDict.keys():
+                sys.exit('ERROR: duplicate subject IDs detected in' + bamList)
             containerDict[subject] = (inputBindPath + bam)
             bamDict[subject] = (dataDir + bam)
 elif anMode == 'de_novo':
     with open(bamList) as f:
         for line in f:
-            (family, mom, dad, kid) = line.split()
-            containerDict[family] = (inputBindPath + mom, inputBindPath + dad, inputBindPath + kid)
-            bamDict[family] = (dataDir + mom, dataDir + dad, dataDir + kid)
+            (family, parent1, parent2, kid) = line.split()
+            if family in bamDict.keys():
+                sys.exit('ERROR: duplicate family IDs detected in' + bamList)
+            containerDict[family] = (inputBindPath + parent1, inputBindPath + parent2, inputBindPath + kid)
+            bamDict[family] = (dataDir + parent1, dataDir + parent2, dataDir + kid)
 
 
 # functions to retrieve bam files by relationship (e.g. matching tumor and normal)
+# TODO: can probably get rid of functions to return .bai and just append the string in the input line...
 def get_tumor_bam(wildcards):
     '''
     Takes bamDict created from user's sample file
@@ -110,23 +117,42 @@ def get_normal_bam_container(wildcards):
     (tumor, normal) = containerDict[wildcards.sample]
     return normal
 
-# def get_mom_bam(wildcards):
+def get_parent1_bam(wildcards):
+    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    return parent1
 
-# def get_mom_index(wildcards):
+def get_parent1_index(wildcards):
+    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    return parent1 + '.bai'
 
-# def get_dad_bam(wildcards):
+def get_parent2_bam(wildcards):
+    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    return parent2
 
-# def get_dad_index(wildcards):
+def get_parent2_index(wildcards):
+    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    return parent2 + '.bai'
 
-# def get_kid_bam(wildcards):
+def get_kid_bam(wildcards):
+    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    return kid
 
-# def get_kid_index(wildcards):
+def get_kid_index(wildcards):
+    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    return kid + '.bai'
 
-# def get_mom_bam_container(wildcards):
+def get_parent1_bam_container(wildcards):
+    (parent1, parent2, kid) = containerDict[wildcards.sample]
+    return parent1
 
-# def get_dad_bam_container(wildcards):
+def get_parent2_bam_container(wildcards):
+    (parent1, parent2, kid) = containerDict[wildcards.sample]
+    return parent2
 
-# def get_kid_bam_container(wildcards):
+def get_kid_bam_container(wildcards):
+    (parent1, parent2, kid) = containerDict[wildcards.sample]
+    return kid
+
 
 if callOnly: 
     for c in CALLERS:

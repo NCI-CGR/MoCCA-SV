@@ -12,11 +12,11 @@ rule manta_filter_t_bams:
         filtT = mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     params:
         path = execBindPath + 'scripts/',
-        t = get_tumor_bam_container,
-        filtT = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam'
+        t = get_tumor_bam_container#,
+        # filtT = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        '{params.path}filter_bams.sh {params.t} {params.filtT}'
+        '{params.path}filter_bams.sh {params.t} {output.filtT}'
 
 rule manta_filter_n_bams:
     input:
@@ -26,32 +26,32 @@ rule manta_filter_n_bams:
     params:
         path = execBindPath + 'scripts/',
         n = get_normal_bam_container,
-        filtN = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam'
+        # filtN = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        '{params.path}filter_bams.sh {params.n} {params.filtN}'
+        '{params.path}filter_bams.sh {params.n} {output.filtN}'
 
 rule manta_index_filtered_t_bams:
     input:
-        filtT = mantaWkngDir + 'filtered_bams/{sample}_T.bam'
+        mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     output:
         mantaWkngDir + 'filtered_bams/{sample}_T.bam.bai'
-    params:
-        filtT = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam'
+    # params:
+    #     filtT = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam'
     singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'samtools index {params.filtT}'
+        'samtools index {input}'
 
 rule manta_index_filtered_n_bams:
     input:
-        filtN = mantaWkngDir + 'filtered_bams/{sample}_N.bam'
+        mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     output:
         mantaWkngDir + 'filtered_bams/{sample}_N.bam.bai'
-    params:
-        filtN = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam'
+    # params:
+    #     filtN = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam'
     singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'samtools index {params.filtN}'
+        'samtools index {input}'
 
 rule manta_create_run_script:
     input:
@@ -59,22 +59,20 @@ rule manta_create_run_script:
         tIndex = mantaWkngDir + 'filtered_bams/{sample}_T.bam.bai',
         n = mantaWkngDir + 'filtered_bams/{sample}_N.bam',
         nIndex = mantaWkngDir + 'filtered_bams/{sample}_N.bam.bai',
-        # ref = 'refGenome/' + refFile,
-        # fai = 'refGenome/' + refFile + '.fai'
         ref = ref,
         fai = ref + '.fai'
     output:
         outFile = mantaTempDir + '{sample}/runWorkflow.py'
     params:
         outParam = tempBindPath + 'manta_TN/{sample}',
-        t = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam',
-        n = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam',
+        # t = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_T.bam',
+        # n = outputBindPath + mantaWkngDir + 'filtered_bams/{sample}_N.bam',
         ref = refBindPath + refFile
     singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
     shell:
         'configManta.py \
-            --normalBam {params.n} \
-            --tumorBam {params.t} \
+            --normalBam {input.n} \
+            --tumorBam {input.t} \
             --referenceFasta {params.ref} \
             --runDir {params.outParam}'
 

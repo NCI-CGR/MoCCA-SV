@@ -19,12 +19,12 @@ rule breakdancer_config:
         breakdancerWkngDir + 'config/{sample}.config'
     params:
         t = get_tumor_bam_container,
-        n = get_normal_bam_container,
-        o = outputBindPath + breakdancerWkngDir + 'config/{sample}.config'
+        n = get_normal_bam_container#,
+        # o = outputBindPath + breakdancerWkngDir + 'config/{sample}.config'
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'  # contains samtools and breakdancer
     shell:
-        'bam2cfg.pl -g -h {params.t} {params.n} > {params.o}'
+        'bam2cfg.pl -g -h {params.t} {params.n} > {output}'
         # can't figure out how to get the histograms to show up somewhere other than the directory in which this is run
 
 rule breakdancer_bam_qc:
@@ -52,26 +52,26 @@ rule breakdancer_run_per_chrom:
     output:
         breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
     params:
-        chrom = chrPrefix + '{chr}',
-        i = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
-        o = outputBindPath + breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
+        chrom = chrPrefix + '{chr}'#,
+        # i = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
+        # o = outputBindPath + breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
     shell:
-        'breakdancer-max {params.i} -o {params.chrom} > {params.o}'
+        'breakdancer-max {input} -o {params.chrom} > {output}'
 
 rule breakdancer_run_translocations:
     input:
         breakdancerWkngDir + 'config/{sample}.config'
     output:
         breakdancerWkngDir + 'calls/transl.{sample}.out'
-    params:
-        i = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
-        o = outputBindPath + breakdancerWkngDir + 'calls/transl.{sample}.out'
+    # params:
+    #     i = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
+    #     o = outputBindPath + breakdancerWkngDir + 'calls/transl.{sample}.out'
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
     shell:
-        'breakdancer-max {params.i} -t > {params.o}'
+        'breakdancer-max {input} -t > {output}'
 
 rule breakdancer_combine_results:
     input:
@@ -100,17 +100,17 @@ rule breakdancer_detect_somatic:
     shell:
         '{params.path}breakdancer_somatic_awk.sh {input.n} {input.i} > {output}'
 
-rule breakdancer_somatic_distributions:
-    input:
-        breakdancerWkngDir + 'somatic/{sample}.out'
-    output:
-        breakdancerWkngDir + 'plots/{sample}.{metric}.png'
-        # note that an underscore between sample and metric caused a problem when there was also an underscore in metric!
-    params:
-        path = execDir + 'scripts/',
-        headerRow = 0
-    shell:
-        'python3 {params.path}plot_distribution.py {input} {params.headerRow} {wildcards.metric} {output}'
+# rule breakdancer_somatic_distributions:
+#     input:
+#         breakdancerWkngDir + 'somatic/{sample}.out'
+#     output:
+#         breakdancerWkngDir + 'plots/{sample}.{metric}.png'
+#         # note that an underscore between sample and metric caused a problem when there was also an underscore in metric!
+#     params:
+#         path = execDir + 'scripts/',
+#         headerRow = 0
+#     shell:
+#         'python3 {params.path}plot_distribution.py {input} {params.headerRow} {wildcards.metric} {output}'
 
 #TODO: think about how to move these histograms to a more appropriate directory
 
@@ -160,7 +160,7 @@ rule list_output_files:
 rule merge_list:
     input:
         conf = expand(breakdancerWkngDir + 'config/{sample}.config.qc', sample=bamDict.keys()),
-        plots = expand(breakdancerWkngDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
+        # plots = expand(breakdancerWkngDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
         # summ = breakdancerWkngDir + 'summary.txt',
         # don't actually need all these above inputs for this step, but I want a uniform rule all with just the last file so these are here now.
         files = expand(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt', sample=bamDict.keys())

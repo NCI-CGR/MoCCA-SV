@@ -19,8 +19,7 @@ rule breakdancer_config:
         breakdancerWkngDir + 'config/{sample}.config'
     params:
         t = get_tumor_bam_container,
-        n = get_normal_bam_container#,
-        # o = outputBindPath + breakdancerWkngDir + 'config/{sample}.config'
+        n = get_normal_bam_container
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'  # contains samtools and breakdancer
     shell:
@@ -52,9 +51,7 @@ rule breakdancer_run_per_chrom:
     output:
         breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
     params:
-        chrom = chrPrefix + '{chr}'#,
-        # i = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
-        # o = outputBindPath + breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
+        chrom = chrPrefix + '{chr}'
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
     shell:
@@ -65,9 +62,6 @@ rule breakdancer_run_translocations:
         breakdancerWkngDir + 'config/{sample}.config'
     output:
         breakdancerWkngDir + 'calls/transl.{sample}.out'
-    # params:
-    #     i = outputBindPath + breakdancerWkngDir + 'config/{sample}.config',
-    #     o = outputBindPath + breakdancerWkngDir + 'calls/transl.{sample}.out'
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
     shell:
@@ -76,7 +70,6 @@ rule breakdancer_run_translocations:
 rule breakdancer_combine_results:
     input:
         i1 = expand(breakdancerWkngDir + 'calls/chrom{chr}.{{sample}}.out', chr=CHR),
-        # double curly braces means it won't expand that one here, just in all or whatever other rule expands it (in this case, breakdancer_summary)
         i2 = breakdancerWkngDir + 'calls/transl.{sample}.out'
     output:
         o = breakdancerWkngDir + 'calls/all.{sample}.out',

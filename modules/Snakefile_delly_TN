@@ -17,8 +17,7 @@ rule delly_call:
         tp = '{type}',
         r = refBindPath + refFile,
         t = get_tumor_bam_container,
-        n = get_normal_bam_container#,
-        # o = outputBindPath + dellyWkngDir + 'calls/{sample}_{type}.bcf'
+        n = get_normal_bam_container
     singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
     shell:
         'delly call \
@@ -40,8 +39,7 @@ rule delly_create_tsv:
     params:
         path = execBindPath + 'scripts/',
         t = get_tumor_bam_container,
-        n = get_normal_bam_container#,
-        # o = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv'
+        n = get_normal_bam_container
     singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
         '{params.path}create_tsv.sh {params.t} tumor {output};'
@@ -55,10 +53,7 @@ rule delly_pre_filter:
     output:
         dellyWkngDir + 'somatic/{sample}_{type}.bcf'
     params:
-        tp = '{type}'#,
-        # tsv = outputBindPath + dellyWkngDir + 'somatic/{sample}_samples.tsv',
-        # bcf = outputBindPath + dellyWkngDir + 'calls/{sample}_{type}.bcf',
-        # o = outputBindPath + dellyWkngDir + 'somatic/{sample}_{type}.bcf'
+        tp = '{type}'
     singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
     shell:
         'delly filter \
@@ -74,16 +69,6 @@ rule delly_combine_output:
         expand(dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES)
     output:
         dellyWkngDir + 'somatic/{sample}_all.txt'
-    # params:
-    #     #i = expand(outputBindPath + dellyWkngDir + 'somatic/{{sample}}_{type}.bcf', type=TYPES), 
-    #     # Note about why double curly braces won't work in params section: 
-    #     # https://bitbucket.org/snakemake/snakemake/issues/584/unable-to-escape-curly-braces-in-params
-    #     i1 = outputBindPath + dellyWkngDir + 'somatic/{sample}_DEL.bcf', 
-    #     i2 = outputBindPath + dellyWkngDir + 'somatic/{sample}_DUP.bcf', 
-    #     i3 = outputBindPath + dellyWkngDir + 'somatic/{sample}_INV.bcf', 
-    #     i4 = outputBindPath + dellyWkngDir + 'somatic/{sample}_BND.bcf', 
-    #     i5 = outputBindPath + dellyWkngDir + 'somatic/{sample}_INS.bcf', 
-    #     o = outputBindPath + dellyWkngDir + 'somatic/{sample}_all.txt'
     singularity:
         'shub://bballew/NGS_singularity_recipes:bcftools_1-9'
     shell:

@@ -10,6 +10,14 @@ i = CALLERS.index("<caller>")
 
 
 # insert caller-specific rules here
+'''
+Notes for running rules in containers:
+- If your inputs/outputs are in subdirectories of your working dir,
+you don't need to mess with bind points at all.  Just use the relative
+paths.
+- If some inputs/outputs are in a totally different path, use the bound
+directories to access these ones, following the convention laid out below:
+'''
 rule <caller>_<rule>:
     input: 
         # outside-container paths and input files

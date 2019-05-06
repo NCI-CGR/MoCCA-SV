@@ -1,105 +1,21 @@
 #!/usr/bin/env python3
 
-import os
-
-# snakemake -s modules/Snakefile_svaba_de_novo --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 4" --jobs 100 --latency-wait 300
-
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
-parentDir = config['outDir']
-workingDir = parentDir + 'svaba_de_novo/'
-dataDir = config['inDir']
-bamList = config['inFile']
-callers = config['callers']
-i = callers.index("svaba")
-nt = config['maxThreads'][i]
-ref = config['refGenome']
-chrPrefix = 'chr' if config['genomeBuild'] == 'hg19' else chrPrefix = ''
-excl = config['excludeFile']
-# logDir = config['logDir'] # not implemented yet
-
-# METRICS1 = ['LO', 'LR', ]  # sample-level parameters to plot
-# METRICS2 = ['QUAL']  # sample-level parameters to plot
-
-refNoExt = os.path.splitext(ref)[0]
-
-# read in a file where each row has the pair name, tumor file name, normal file name
-# this could change depending on functionality required, eg
-# if tumor and normal bams have the same name but are in different directories
-# (currently assuming same directory for T and N)
-bamDict = {}
-with open(bamList) as f:
-    for line in f:
-        (fam, parent1, parent2, child) = line.split()
-        bamDict[fam] = (dataDir + parent1, dataDir + parent2, dataDir + child)
-
-
-def get_parent1_bam(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent1
-
-
-def get_parent1_index(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent1 + '.bai'
-
-
-def get_parent2_bam(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent2
-
-
-def get_parent2_index(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent2 + '.bai'
-
-
-def get_child_bam(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return child
-
-
-def get_child_index(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return child + '.bai'
-
-
-rule all:
-    input:
-        workingDir + 'summary.txt'#,
-        # expand(workingDir + 'plots/{sample}.{metric1}.png', sample=bamDict.keys(), metric1=METRICS1),
-        # expand(workingDir + 'plots/{sample}.{metric2}.png', sample=bamDict.keys(), metric2=METRICS2),
-        # expand(workingDir + 'svaba/{sample}.svaba.somatic.sv.vcf', sample=bamDict.keys())
-
-rule index_ref:
-    input:
-        ref
-    output:
-        d = refNoExt + '.dict',
-        amb = ref + '.amb',
-        ann = ref + '.ann',
-        bwt = ref + '.bwt',
-        fai = ref + '.fai',
-        pac = ref + '.pac',
-        sa = ref + '.sa'
-    shell:
-        'module load bwa samtools Picard;'
-        'bwa index -a bwtsw {input};'
-        'samtools faidx {input};'
-        'picard CreateSequenceDictionary REFERENCE={input} OUTPUT={output.d}'
+svabaWkngDir = 'svaba_de_novo/'
+svabaTempDir = config['tempDir'].rstrip('/') + '/svaba_de_novo/'
+i = CALLERS.index("svaba")
+svabaNt = config['maxThreads'][i]
 
 rule svaba_call:
     input:
-        p1 = get_parent1_bam,
-        p1Index = get_parent1_index,
-        p2 = get_parent2_bam,
-        p2Index = get_parent2_index,
-        c = get_child_bam,
-        cIndex = get_child_index,
-        excl = excl,
+        parent2 = get_parent2_bam,
+        parent2Index = get_parent2_index,
+        parent1 = get_parent1_bam,
+        parent1Index = get_parent1_index,
+        kid = get_kid_bam,
+        kidIndex = get_kid_index,
+        # excl = excl,
         ref = ref,
-        d = refNoExt + '.dict',
+        d = refDir + '/' + refNoExt + '.dict',
         amb = ref + '.amb',
         ann = ref + '.ann',
         bwt = ref + '.bwt',
@@ -107,101 +23,107 @@ rule svaba_call:
         pac = ref + '.pac',
         sa = ref + '.sa'
     output:
-        workingDir + 'calls/{sample}.alignments.txt.gz',
-        workingDir + 'calls/{sample}.bps.txt.gz',
-        workingDir + 'calls/{sample}.contigs.bam',
-        workingDir + 'calls/{sample}.discordant.txt.gz',
-        workingDir + 'calls/{sample}.log',
-        workingDir + 'calls/{sample}.svaba.germline.indel.vcf',
-        workingDir + 'calls/{sample}.svaba.germline.sv.vcf',
-        workingDir + 'calls/{sample}.svaba.somatic.indel.vcf',
-        workingDir + 'calls/{sample}.svaba.somatic.sv.vcf',
-        workingDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
-        workingDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
-        workingDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
-        workingDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
-    threads: nt
+        svabaTempDir + 'calls/{sample}.alignments.txt.gz',
+        svabaTempDir + 'calls/{sample}.bps.txt.gz',
+        svabaTempDir + 'calls/{sample}.contigs.bam',
+        svabaTempDir + 'calls/{sample}.discordant.txt.gz',
+        svabaTempDir + 'calls/{sample}.log',
+        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    threads: svabaNt
     params:
-        opath = workingDir + 'calls/',
-        epath = execDir + 'sv_callers/'
+        r = refBindPath + refFile,
+        o = tempBindPath + svabaWkngDir + 'calls/',
+        p2 = get_parent2_bam_container,
+        p1 = get_parent1_bam_container,
+        k = get_kid_bam_container
+    singularity: 'shub://bballew/NGS_singularity_recipes:svaba'
     shell:
-        'module load gcc/4.8.4;'
-        '{params.epath}svaba/bin/svaba run \
+        'svaba run \
             -p {threads} \
-            -G {input.ref} \
-            -t {input.c} \
-            -n {input.p1} \
-            -n {input.p2} \
-            -B {input.excl} \
-            -a {params.opath}{wildcards.sample}'
+            -G {params.r} \
+            -n {params.p2} \
+            -n {params.p1} \
+            -t {params.k} \
+            -a {params.o}{wildcards.sample}'
+            # -B {input.excl} \
+
+rule move_call_files:
+    input:
+        svabaTempDir + 'calls/{sample}.alignments.txt.gz',
+        svabaTempDir + 'calls/{sample}.bps.txt.gz',
+        svabaTempDir + 'calls/{sample}.contigs.bam',
+        svabaTempDir + 'calls/{sample}.discordant.txt.gz',
+        svabaTempDir + 'calls/{sample}.log',
+        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    output:
+        svabaWkngDir + 'calls/{sample}.alignments.txt.gz',
+        svabaWkngDir + 'calls/{sample}.bps.txt.gz',
+        svabaWkngDir + 'calls/{sample}.contigs.bam',
+        svabaWkngDir + 'calls/{sample}.discordant.txt.gz',
+        svabaWkngDir + 'calls/{sample}.log',
+        svabaWkngDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    params:
+        wDir = svabaWkngDir + 'calls/'
+    shell:
+        'mv {input} {params.wDir}'
 
 rule svaba_rename:
+    '''
+    Svaba allows both parents in a trio to be entered as "normal"
+    samples, and the proband as "tumor." This means that the "somatic"
+    output will be the de novo mutations.
+    '''
     input:
-        i1 = workingDir + 'calls/{sample}.svaba.somatic.indel.vcf',
-        i2 = workingDir + 'calls/{sample}.svaba.somatic.sv.vcf',
-        i3 = workingDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
-        i4 = workingDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+        i1 = svabaWkngDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        i2 = svabaWkngDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        i3 = svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        i4 = svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
     output:
-        o1 = workingDir + 'calls/{sample}.svaba.denovo.indel.vcf',
-        o2 = workingDir + 'calls/{sample}.svaba.denovo.sv.vcf',
-        o3 = workingDir + 'calls/{sample}.svaba.unfiltered.denovo.indel.vcf',
-        o4 = workingDir + 'calls/{sample}.svaba.unfiltered.denovo.sv.vcf'
+        o1 = svabaWkngDir + 'calls/{sample}.svaba.denovo.indel.vcf',
+        o2 = svabaWkngDir + 'calls/{sample}.svaba.denovo.sv.vcf',
+        o3 = svabaWkngDir + 'calls/{sample}.svaba.unfiltered.denovo.indel.vcf',
+        o4 = svabaWkngDir + 'calls/{sample}.svaba.unfiltered.denovo.sv.vcf'
     shell:
         'mv {input.i1} {output.o1};'
         'mv {input.i2} {output.o2};'
         'mv {input.i3} {output.o3};'
         'mv {input.i4} {output.o4}'
 
-# this rule allows custom filtering, in addition to relying on the built-in filtered files
-# rule svaba_basic_filter:
-#     input:
-#         workingDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
-#     output:
-#         workingDir + 'custom_filtered/{sample}.svaba.filtered.somatic.sv.vcf'
-#     shell:
-#         # awk statement to filter as in breakdancer
-
-#     params:
-#         path = parentDir + 'scripts/',
-#         qual_threshold = 30,
-#         num_reads = 3
-#     shell:
-#         '{params.path}breakdancer_somatic_filtering.sh {input} {params.qual_threshold} {params.num_reads} > {output}'
-# filter = PASS  -- this one doesn't need the special vcf per-genotype stuff
-# AD > 10? num of supporting reads
-# LR < 1?
-# LO > 30?
-# QUAL > 30? -- this one doesn't need the special vcf per-genotype stuff
-
-# rule svaba_somatic_distributions1:  # sample-level parameters
-#         input:
-    #     workingDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
-    # output:
-    #     workingDir + 'plots/{sample}.{metric1}.png'
-    # params:
-    #     path = parentDir + 'scripts/',
-    #     headerRow = 0
-    # shell:
-    #     'module load python3;'
-    #     'python3 {params.path}plot_vcf_distribution.py {input} {params.headerRow} {wildcards.metric1} {output}'
-
-# rule svaba_somatic_distributions2:  # variant-level parameters
-#         input:
-    #     workingDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
-    # output:
-    #     workingDir + 'plots/{sample}.{metric2}.png'
-    # params:
-    #     path = parentDir + 'scripts/',
-    #     headerRow = 0
-    # shell:
-    #     'module load python3;'
-    #     'python3 {params.path}plot_distribution.py {input} {params.headerRow} {wildcards.metric2} {output}'
-
-rule svaba_summary:
+rule svaba_list_output_files:
     input:
-        expand(workingDir + 'calls/{sample}.svaba.denovo.sv.vcf', sample=bamDict.keys())
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.denovo.sv.vcf'
     output:
-        workingDir + 'summary.txt'
+        temp(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
     shell:
-        'grep -vc "^##" {input} >> {output}'
-        # weirdly, this throws an error if the grep result is 0, so this way it will always detect at least the header row
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
+
+rule svaba_merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_svaba.txt'
+    shell:
+        'cat {input} | sort | sed "1s/^/sample svaba\\n/" > {output}'

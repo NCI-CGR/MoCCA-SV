@@ -1,71 +1,13 @@
 #!/usr/bin/env python3
 
-import os
-
-# snakemake -s modules/Snakefile_breakdancer_de_novo --cluster "qsub -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/ -j y -pe by_node 2" --jobs 100 --latency-wait 300
-# NOTES:
-    # wrap the above call in something that A) loads appropriate python module and B) creates/checks a directory for the snakejob logs
-
-conf = os.environ.get("conf")
-configfile: conf
-execDir = config['execDir']
-parentDir = config['outDir']
-workingDir = parentDir + 'breakdancer_de_novo/'
-dataDir = config['inDir']
-bamList = config['inFile']
-chrPrefix = 'chr' if config['genomeBuild'] == 'hg19' else chrPrefix = ''
-
-# nt = config['maxThreads']  # breakdancer doesn't multiple threads (though perhaps I should where I parallelize SV calling per chrom)
-# ref = config['refGenome']  # breakdancer doesn't use a ref
+breakdancerWkngDir =  'breakdancer_de_novo/'
+if config['genomeBuild'] == 'hg19':
+    chrPrefix = 'chr'
+else:
+    chrPrefix = ''
 
 METRICS = ['Score', 'num_Reads']  # parameters to plot
-CHR = ['1', '2', '3', '4', '5']#, '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y']
-
-# read in a file where each row has the pair name, tumor file name, normal file name
-# this could change depending on functionality required, eg
-# if tumor and normal bams have the same name but are in different directories
-# (currently assuming same directory for T and N)
-bamDict = {}
-with open(bamList) as f:
-    for line in f:
-        (fam, parent1, parent2, child) = line.split()
-        bamDict[fam] = (dataDir + parent1, dataDir + parent2, dataDir + child)
-
-
-def get_parent1_bam(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent1
-
-
-def get_parent1_index(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent1 + '.bai'
-
-
-def get_parent2_bam(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent2
-
-
-def get_parent2_index(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return parent2 + '.bai'
-
-
-def get_child_bam(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return child
-
-
-def get_child_index(wildcards):
-    (parent1, parent2, child) = bamDict[wildcards.sample]
-    return child + '.bai'
-
-rule all:
-    input:
-        expand(workingDir + 'config/{sample}.config.qc', sample=bamDict.keys()),
-        expand(workingDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
-        workingDir + 'summary.txt'
+CHR = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', 'X', 'Y']
 
 rule breakdancer_config:
     input:
@@ -73,72 +15,75 @@ rule breakdancer_config:
         p1Index = get_parent1_index,
         p2 = get_parent2_bam,
         p2Index = get_parent2_index,
-        c = get_child_bam,
-        cIndex = get_child_index
+        kid = get_kid_bam,
+        kidIndex = get_kid_index
     output:
-        workingDir + 'config/{sample}.config'
+        breakdancerWkngDir + 'config/{sample}.config'
     params:
-        path = execDir + 'sv_callers/'
+        p1 = get_parent1_bam_container,
+        p2 = get_parent2_bam_container,
+        k = get_kid_bam_container
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'  # contains samtools and breakdancer
     shell:
-        'module load samtools/1.3.1 perl/5.18.0;'
-        'perl {params.path}breakdancer/perl/bam2cfg.pl -g -h {input.c} {input.p1} {input.p2} > {output}'
-        # can't figure out how to get the histograms to show up somewhere other than the directory in which this is run
+        'bam2cfg.pl -g -h {params.k} {params.p1} {params.p2} > {output}'
 
 rule breakdancer_bam_qc:
     input:
-        cfg = workingDir + 'config/{sample}.config',
+        cfg = breakdancerWkngDir + 'config/{sample}.config',
         p1 = get_parent1_bam,
         p2 = get_parent2_bam,
-        c = get_child_bam
+        kid = get_kid_bam
     output:
-        o = workingDir + 'config/{sample}.config.qc',
-        t1 = temp(workingDir + 'config/{sample}.t1'),
-        t2 = temp(workingDir + 'config/{sample}.t2'),
-        t3 = temp(workingDir + 'config/{sample}.t3'),
-        t4 = temp(workingDir + 'config/{sample}.t4')
+        o = breakdancerWkngDir + 'config/{sample}.config.qc',
+        t1 = temp(breakdancerWkngDir + 'config/{sample}.t1'),
+        t2 = temp(breakdancerWkngDir + 'config/{sample}.t2'),
+        t3 = temp(breakdancerWkngDir + 'config/{sample}.t3'),
+        t4 = temp(breakdancerWkngDir + 'config/{sample}.t4')
     params:
-        path = parentDir + 'scripts/'
+        path = execBindPath + 'scripts/',
+        p1 = get_parent1_bam_container,
+        p2 = get_parent2_bam_container,
+        kid = get_kid_bam_container
+    singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
-        'module load samtools/1.3.1 perl/5.18.0;'
         '{params.path}breakdancer_cfg_qc.sh {input.cfg} {output.t1};'
-        '{params.path}breakdancer_qc.sh {input.p1} {input.cfg} {output.t2};'
-        '{params.path}breakdancer_qc.sh {input.p2} {input.cfg} {output.t3};'
-        '{params.path}breakdancer_qc.sh {input.c} {input.cfg} {output.t4};'
+        '{params.path}breakdancer_qc.sh {params.p1} {input.cfg} {output.t2};'
+        '{params.path}breakdancer_qc.sh {params.p2} {input.cfg} {output.t3};'
+        '{params.path}breakdancer_qc.sh {params.kid} {input.cfg} {output.t4};'
         'cat {output.t1} {output.t2} {output.t3} {output.t4} > {output.o}'
 
 rule breakdancer_run_per_chrom:
     input:
-        workingDir + 'config/{sample}.config'
+        breakdancerWkngDir + 'config/{sample}.config'
     output:
-        workingDir + 'calls/chrom{chr}.{sample}.out'
+        breakdancerWkngDir + 'calls/chrom{chr}.{sample}.out'
     params:
-        chrom = chrPrefix + '{chr}',
-        path = execDir + 'sv_callers/'
+        chrom = chrPrefix + '{chr}'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
     shell:
-        'module load samtools/1.3.1 perl/5.18.0;'
-        '{params.path}breakdancer/build/bin/breakdancer-max {input} -o {params.chrom} > {output}'
+        'breakdancer-max {input} -o {params.chrom} > {output}'
 
 rule breakdancer_run_translocations:
     input:
-        workingDir + 'config/{sample}.config'
+        breakdancerWkngDir + 'config/{sample}.config'
     output:
-        workingDir + 'calls/transl.{sample}.out'
-    params:
-        path = execDir + 'sv_callers/'
+        breakdancerWkngDir + 'calls/transl.{sample}.out'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'
     shell:
-        'module load samtools/1.3.1 perl/5.18.0;'
-        '{params.path}breakdancer/build/bin/breakdancer-max {input} -t > {output}'
+        'breakdancer-max {input} -t > {output}'
 
 rule breakdancer_combine_results:
     input:
-        i1 = expand(workingDir + 'calls/chrom{chr}.{{sample}}.out', chr=CHR),
-        # double curly braces means it won't expand that one here, just in all or whatever other rule expands it (in this case, breakdancer_summary)
-        i2 = workingDir + 'calls/transl.{sample}.out'
+        i1 = expand(breakdancerWkngDir + 'calls/chrom{chr}.{{sample}}.out', chr=CHR),
+        i2 = breakdancerWkngDir + 'calls/transl.{sample}.out'
     output:
-        o = workingDir + 'calls/all.{sample}.out',
-        t1 = temp(workingDir + 'calls/all.{sample}.temp'),
-        t2 = temp(workingDir + 'calls/all.{sample}.temp.nohead'),
-        t3 = temp(workingDir + 'calls/header.{sample}.temp')
+        o = breakdancerWkngDir + 'calls/all.{sample}.out',
+        t1 = temp(breakdancerWkngDir + 'calls/all.{sample}.temp'),
+        t2 = temp(breakdancerWkngDir + 'calls/all.{sample}.temp.nohead'),
+        t3 = temp(breakdancerWkngDir + 'calls/header.{sample}.temp')
     shell:
         'grep "^#Chr" {input.i2} > {output.t3};'
         'cat {input.i1} {input.i2} >> {output.t1};'
@@ -149,26 +94,24 @@ rule breakdancer_detect_de_novo:
     input:
         p1 = get_parent1_bam,
         p2 = get_parent2_bam,
-        i = workingDir + 'calls/all.{sample}.out'
+        i = breakdancerWkngDir + 'calls/all.{sample}.out'
     output:
-        workingDir + 'de_novo/{sample}.out'
+        breakdancerWkngDir + 'de_novo/{sample}.out'
     params:
-        path = parentDir + 'scripts/'
+        path = execDir + 'scripts/'
     shell:
         '{params.path}breakdancer_de_novo_awk.sh {input.p1} {input.p2} {input.i} > {output}'
 
-rule breakdancer_de_novo_distributions:
-    input:
-        workingDir + 'de_novo/{sample}.out'
-    output:
-        workingDir + 'plots/{sample}.{metric}.png'
-        # note that an underscore between sample and metric caused a problem when there was also an underscore in metric!
-    params:
-        path = parentDir + 'scripts/',
-        headerRow = 0
-    shell:
-        'module load python3;'
-        'python3 {params.path}plot_distribution.py {input} {params.headerRow} {wildcards.metric} {output}'
+# rule breakdancer_de_novo_distributions:
+#     input:
+#         breakdancerWkngDir + 'de_novo/{sample}.out'
+#     output:
+#         breakdancerWkngDir + 'plots/{sample}.{metric}.png'
+#     params:
+#         path = execDir + 'scripts/',
+#         headerRow = 0
+#     shell:
+#         '{params.path}plot_distribution.py {input} {params.headerRow} {wildcards.metric} {output}'
 
 # #TODO: think about how to move these histograms to a more appropriate directory
 
@@ -180,24 +123,46 @@ rule breakdancer_de_novo_distributions:
 # #     output:
 # #     shell:
 
-# put filtering thresholds into config file?
-rule breakdancer_basic_filtering:
-    input:
-        workingDir + 'de_novo/{sample}.out'
-    output:
-        workingDir + 'de_novo_filtered/{sample}.out'
-    params:
-        path = parentDir + 'scripts/',
-        qual_threshold = 30,
-        num_reads = 3
-    shell:
-        '{params.path}breakdancer_somatic_filtering.sh {input} {params.qual_threshold} {params.num_reads} > {output}'  # does the somatic apply equally well to the de novo?
+# # put filtering thresholds into config file?
+# rule breakdancer_basic_filtering:
+#     input:
+#         breakdancerWkngDir + 'de_novo/{sample}.out'
+#     output:
+#         breakdancerWkngDir + 'de_novo_filtered/{sample}.out'
+#     params:
+#         path = execDir + 'scripts/',
+#         qual_threshold = 30,
+#         num_reads = 3
+#     shell:
+#         '{params.path}breakdancer_somatic_filtering.sh {input} {params.qual_threshold} {params.num_reads} > {output}'  # does the somatic apply equally well to the de novo?
 
-rule breakdancer_summary:
+# rule breakdancer_summary:
+#     input:
+#         expand(breakdancerWkngDir + 'de_novo_filtered/{sample}.out', sample=bamDict.keys())
+#     output:
+#         breakdancerWkngDir + 'summary.txt'
+#     shell:
+#         'grep -vc "^#" {input} >> {output}'
+#         # weirdly, this throws an error if the grep result is 0
+
+rule list_output_files:
     input:
-        expand(workingDir + 'de_novo_filtered/{sample}.out', sample=bamDict.keys())
+        breakdancerWkngDir + 'de_novo/{sample}.out'
     output:
-        workingDir + 'summary.txt'
+        temp(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
     shell:
-        'grep -vc "^#" {input} >> {output}'
-        # weirdly, this throws an error if the grep result is 0
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
+
+rule merge_list:
+    input:
+        conf = expand(breakdancerWkngDir + 'config/{sample}.config.qc', sample=bamDict.keys()),
+        # plots = expand(breakdancerWkngDir + 'plots/{sample}.{metric}.png', sample=bamDict.keys(), metric=METRICS),
+        # summ = breakdancerWkngDir + 'summary.txt',
+        # don't actually need all these above inputs for this step, but I want a uniform rule all with just the last file so these are here now.
+        files = expand(parentDir + 'SV_files_for_annotation_breakdancer.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_breakdancer.txt'
+    shell:
+        'cat {input.files} | sort | sed "1s/^/sample breakdancer\\n/" > {output}'

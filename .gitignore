@@ -6,6 +6,7 @@ annotation*
     # annotation/genomic_context/  
 test_cases/test_in/
 test_out/
+test_out_de_novo/
 sv_callers/
 .snakemake/
 singularity/

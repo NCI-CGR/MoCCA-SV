@@ -13,11 +13,12 @@ die() {
     exit 1
 }
 
-configFile=$1
-
+configFile=""
 if [ $# -eq 0 ]; then
     echo "Please specify config file with full path."
     exit 1
+else 
+    configFile=$1
 fi
 
 if [ ! -f "$configFile" ]; then
@@ -59,8 +60,8 @@ if [ "$clusterMode" == '"'"local"'"' ]; then
 elif [ "$clusterMode" = '"'"unlock"'"' ]; then  # put in a convenience unlock
     cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --unlock"
 else
-    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --nt --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait 300 &> ${logDir}/MoCCA-SV_${DATE}.out"
-    # --nt - keep temp files
+    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait 300 &> ${logDir}/MoCCA-SV_${DATE}.out"
+    # --nt - keep temp files - can use while developing, especially for compare and annotate module.
 fi
 
 echo "Command run: $cmd"

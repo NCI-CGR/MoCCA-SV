@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+
+svabaWkngDir = 'svaba_germline/'
+svabaTempDir = config['tempDir'].rstrip('/') + '/svaba_germline/'
+i = CALLERS.index("svaba")
+svabaNt = config['maxThreads'][i]
+
+rule svaba_call:
+    input:
+        parent2 = get_bam,
+        parent2Index = get_bam_index,
+        # excl = excl,
+        ref = ref,
+        d = refDir + '/' + refNoExt + '.dict',
+        amb = ref + '.amb',
+        ann = ref + '.ann',
+        bwt = ref + '.bwt',
+        fai = ref + '.fai',
+        pac = ref + '.pac',
+        sa = ref + '.sa'
+    output:
+        svabaTempDir + 'calls/{sample}.alignments.txt.gz',
+        svabaTempDir + 'calls/{sample}.bps.txt.gz',
+        svabaTempDir + 'calls/{sample}.contigs.bam',
+        svabaTempDir + 'calls/{sample}.discordant.txt.gz',
+        svabaTempDir + 'calls/{sample}.log',
+        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',  # will this output be here for germline?
+        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    threads: svabaNt
+    params:
+        r = refBindPath + refFile,
+        o = tempBindPath + svabaWkngDir + 'calls/',
+        s = get_bam_container
+    singularity: 'shub://bballew/NGS_singularity_recipes:svaba'
+    shell:
+        'svaba run \
+            -p {threads} \
+            -G {params.r} \
+            -I \
+            -L 6 \
+            -t {params.s} \
+            -a {params.o}{wildcards.sample}'
+            # -B {input.excl} \
+
+rule move_call_files:
+    input:
+        svabaTempDir + 'calls/{sample}.alignments.txt.gz',
+        svabaTempDir + 'calls/{sample}.bps.txt.gz',
+        svabaTempDir + 'calls/{sample}.contigs.bam',
+        svabaTempDir + 'calls/{sample}.discordant.txt.gz',
+        svabaTempDir + 'calls/{sample}.log',
+        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    output:
+        svabaWkngDir + 'calls/{sample}.alignments.txt.gz',
+        svabaWkngDir + 'calls/{sample}.bps.txt.gz',
+        svabaWkngDir + 'calls/{sample}.contigs.bam',
+        svabaWkngDir + 'calls/{sample}.discordant.txt.gz',
+        svabaWkngDir + 'calls/{sample}.log',
+        svabaWkngDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+    params:
+        wDir = svabaWkngDir + 'calls/'
+    shell:
+        'mv {input} {params.wDir}'
+
+rule svaba_list_output_files:
+    input:
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
+    shell:
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
+
+rule svaba_merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_svaba.txt'
+    shell:
+        'cat {input} | sort | sed "1s/^/sample svaba\\n/" > {output}'

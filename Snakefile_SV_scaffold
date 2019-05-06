@@ -71,49 +71,32 @@ elif anMode == 'de_novo':
 
 
 # functions to retrieve bam files by relationship (e.g. matching tumor and normal)
-# TODO: can probably get rid of functions to return .bai and just append the string in the input line...
+'''
+All of the following functions take bamDict or containerDict,
+which is built from the user's sample file, and return the
+appropriate bam file or index.
+'''
 def get_tumor_bam(wildcards):
-    '''
-    Takes bamDict created from user's sample file
-    Returns tumor file name with local path
-    '''
     (tumor, normal) = bamDict[wildcards.sample]
     return tumor
-
 
 def get_tumor_index(wildcards):
     (tumor, normal) = bamDict[wildcards.sample]
     return tumor + '.bai'
 
-
 def get_normal_bam(wildcards):
-    '''
-    Takes bamDict created from user's sample file
-    Returns normal file name with local path
-    '''
     (tumor, normal) = bamDict[wildcards.sample]
     return normal
-
 
 def get_normal_index(wildcards):
     (tumor, normal) = bamDict[wildcards.sample]
     return normal + '.bai'
 
-
 def get_tumor_bam_container(wildcards):
-    '''
-    Takes bamDict created from user's sample file
-    Returns tumor file name with container path
-    '''
     (tumor, normal) = containerDict[wildcards.sample]
     return tumor
 
-
 def get_normal_bam_container(wildcards):
-    '''
-    Takes bamDict created from user's sample file
-    Returns normal file name with container path
-    '''
     (tumor, normal) = containerDict[wildcards.sample]
     return normal
 
@@ -152,6 +135,18 @@ def get_parent2_bam_container(wildcards):
 def get_kid_bam_container(wildcards):
     (parent1, parent2, kid) = containerDict[wildcards.sample]
     return kid
+
+def get_bam(wildcards):
+    bam = bamDict[wildcards.sample]
+    return bam
+
+def get_bam_index(wildcards):
+    bam = bamDict[wildcards.sample]
+    return bam + '.bai'
+
+def get_bam_container(wildcards):
+    bam = containerDict[wildcards.sample]
+    return bam
 
 
 if callOnly: 

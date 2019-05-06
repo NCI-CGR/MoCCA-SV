@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+
+dellyWkngDir = 'delly_germline/'  # this is made within the parentDir (AKA outDir from the config file)
+
+TYPES = ['DEL', 'DUP', 'INV', 'BND', 'INS']
+
+rule delly_call_individual_samples:
+    input:
+        bam = get_bam,
+        bamIndex = get_bam_index,
+        ref = ref
+    output:
+        dellyWkngDir + 'calls/{sample}_type{type}.bcf'
+    params:
+        tp = '{type}',
+        r = refBindPath + refFile,
+        i = get_bam_container,
+        x = '/delly/excludeTemplates/human.hg19.excl.tsv'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
+    shell:
+        'delly call \
+            -t {params.tp} \
+            -x {params.x} \
+            -o {output} \
+            -g {params.r} \
+            {params.i}'
+
+# merge cohort, then re-genotype across whole cohort, then merge again, finally filter with delly's germline filter (if n>20).
+
+rule delly_merge_SVs_by_cohort:
+    '''
+    Get a unified call set of preliminary SVs in samples.
+    '''
+    input:
+        expand(dellyWkngDir + 'calls/{sample}_type{{type}}.bcf', sample=sampleDict),
+    output:
+        dellyWkngDir + 'merged_by_cohort/merged_{type}.bcf'
+    params:
+        tp = '{type}'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
+    shell:
+        'delly merge \
+            -m 500 \
+            -n 1000000 \
+            -o {output} \
+            -b 500 \
+            -r 0.5 \
+            {input}'
+
+rule delly_re_genotype:
+    '''
+    Look again at each preliminary SV from the previous rule,
+    and make a call in each cohort member.
+    '''
+    input:
+        ref = ref,
+        cohort = dellyWkngDir + 'merged_by_cohort/merged_{type}.bcf',
+        bam = get_bam
+    output:
+        dellyWkngDir + 're-genoytped/{sample}_type{type}.bcf'
+    params:
+        tp = '{type}',
+        r = refBindPath + refFile,
+        bam = get_bam_container,
+        x = '/delly/excludeTemplates/human.hg19.excl.tsv'
+    singularity: 'shub://bballew/NGS_singularity_recipes:delly_0-8-1'
+    shell:
+        'delly call \
+            -t {params.tp} \
+            -x {params.x} \
+            -g {params.r} \
+            -v {input.cohort} \
+            -o {output} \
+            {params.bam}'
+
+rule delly_merge_regeno_by_cohort:
+    input:
+        expand(dellyWkngDir + 're-genoytped/{sample}_type{{type}}.bcf', sample=sampleDict)
+    output:
+        dellyWkngDir + 're-geno_merged_by_cohort/merged_{type}.bcf'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bcftools_1-9'
+    shell:
+        'bcftools merge \
+            -m id \
+            -O b \
+            -o {output} \
+            {input}'
+
+rule delly_apply_germline_filter:
+    '''
+    This results in a single set of calls genotyped for all
+    individuals, which doesn't quite work with the rest of the
+    pipeline, so I split it in the next rule.
+    '''
+    input:
+        dellyWkngDir + 're-geno_merged_by_cohort/merged_{type}.bcf'
+    output:
+        dellyWkngDir + 'germline/merged_germline_{type}.bcf'
+    shell:
+        'delly filter -f germline -o {output} {input}'
+
+rule delly_combine_types:
+    input:
+        expand(dellyWkngDir + 'germline/merged_germline_{type}.bcf', type=TYPES)
+    output:
+        dellyWkngDir + 'germline/merged_germline_all.txt'
+    singularity:
+        'shub://bballew/NGS_singularity_recipes:bcftools_1-9'
+    shell:
+        'bcftools concat -a {input} | sort -k1,1 -k2,2n > {output}'
+
+################HERE
+# think about how best to do this here.  how does delly get the sample names from the input?  that's probaby the best way to get the sample names.
+rule delly_split_bcf:
+    input:
+        dellyWkngDir + 'germline/merged_germline_all.txt'
+    output:
+        dellyWkngDir + 'germline/{}'
+    shell:
+        'for sample in `bcftools query -l {input}`; do bcftools view -c1 -Oz -s $sample -o {output} {input}; done'
+
+rule delly_list_output_files:
+    input:
+        dellyWkngDir + 'germline/{sample}kid_all.txt'
+    output:
+        temp(parentDir + 'SV_files_for_annotation_delly.{sample}.txt')
+    params:
+        path = execDir + 'scripts/'
+    shell:
+        '{params.path}list_files.sh {input} {wildcards.sample} > {output}'
+
+rule delly_merge_list:
+    input:
+        expand(parentDir + 'SV_files_for_annotation_delly.{sample}.txt', sample=bamDict.keys())
+    output:
+        parentDir + 'SV_files_for_annotation_delly.txt'
+    shell:
+        'cat {input} | sort | sed "1s/^/sample delly\\n/" > {output}'
+

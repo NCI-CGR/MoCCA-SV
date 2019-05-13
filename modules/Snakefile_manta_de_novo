@@ -67,9 +67,10 @@ rule manta_create_run_script:
         ref = ref,
         fai = ref + '.fai'
     output:
-        outFile = mantaTempDir + '{sample}/runWorkflow.py'
+        outFile = mantaTempDir + '{sample}/runWorkflow.py',
+        p = mantaTempDir + '{sample}/runWorkflow.py.config.pickle'
     params:
-        outParam = tempBindPath + 'manta_de_novo/{sample}',
+        outParam = tempBindPath + 'manta_de_novo/{sample}', # mantaTempDir + 'manta_de_novo/{sample}', #
         ref = refBindPath + refFile
     singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
     shell:
@@ -84,8 +85,12 @@ rule manta_call:
     '''
     '''
     input:
-        mantaTempDir + '{sample}/runWorkflow.py'
+        mantaTempDir + '{sample}/runWorkflow.py',
+        mantaTempDir + '{sample}/runWorkflow.py.config.pickle'
     output:
+        mantaTempDir + '{sample}/workflow.error.log.txt',
+        mantaTempDir + '{sample}/workflow.exitcode.txt',
+        mantaTempDir + '{sample}/workflow.warning.log.txt',
         mantaTempDir + '{sample}/workspace/pyflow.data/logs/pyflow_log.txt',
         mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
         mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
@@ -106,66 +111,70 @@ rule manta_call:
     shell:
         '{params} -m local -j {threads}' 
 
-rule manta_move_call_files_pt1:
+rule manta_move_call_files:
     input:
-        mantaTempDir + '{sample}/runWorkflow.py'
+        i1 = mantaTempDir + '{sample}/runWorkflow.py',
+        i2 = mantaTempDir + '{sample}/runWorkflow.py.config.pickle',
+        i3 = mantaTempDir + '{sample}/workflow.error.log.txt',
+        i4 = mantaTempDir + '{sample}/workflow.exitcode.txt',
+        i5 = mantaTempDir + '{sample}/workflow.warning.log.txt',
+        i6 = mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        i7 = mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        i8 = mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        i9 = mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv',
+        i10 = mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        i11 = mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        i12 = mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        i13 = mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        i14 = mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        i15 = mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi'#,
+        # i16 = mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz',
+        # i17 = mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
     output:
-        mantaWkngDir + '{sample}/runWorkflow.py'
-    params:
-        wDir = mantaWkngDir + '{sample}/'
-    shell:
-        'mv {input} {params.wDir}'
-
-rule manta_move_call_files_pt2:
-    input:
-        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
-        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
-        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
-        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
-        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
-        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
-        # mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz',
-        # mantaTempDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
-    output:
+        mantaWkngDir + '{sample}/runWorkflow.py',
+        mantaWkngDir + '{sample}/runWorkflow.py.config.pickle',
+        mantaWkngDir + '{sample}/workflow.error.log.txt',
+        mantaWkngDir + '{sample}/workflow.exitcode.txt',
+        mantaWkngDir + '{sample}/workflow.warning.log.txt',
+        mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv',
         mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
         mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
         mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz',
         mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
         mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz',
-        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi'#,
         # mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz',
         # mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
     params:
-        wDir = mantaWkngDir + '{sample}/results/variants/'
+        wkngDir = mantaWkngDir + '{sample}/',
+        wkngDir1 = mantaWkngDir + '{sample}/results/stats/',
+        wkngDir2 = mantaWkngDir + '{sample}/results/variants/',
+        tempDir1 = mantaTempDir + '{sample}/results/stats/',
+        tempDir2 = mantaTempDir + '{sample}/results/variants/'
     shell:
-        'mv {input} {params.wDir}'
-
-rule manta_move_call_files_pt3:
-    input:
-        mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
-        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
-        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
-        mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
-    output:
-        mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt',
-        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
-        mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
-        mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv'
-    params:
-        wDir = mantaWkngDir + '{sample}/results/stats/'
-    shell:
-        'mv {input} {params.wDir}'
+        'mv -t {params.wkngDir} {input.i1} {input.i2} {input.i3} {input.i4} {input.i5};'
+        'mv -t {params.wkngDir1} {params.tempDir1}*;'
+        'mv -t {params.wkngDir2} {params.tempDir2}*'
 
 rule manta_de_novo_scoring:
+    '''
+    This step requires the SM tag from the original bam, as this is used
+    to name the genotype columns in the vcf.  Currently using pysam to
+    get them from the bam when I read in the sample file and make the 
+    initial dict (see Snakefile_SV_scaffold).
+    '''
     input:
         mantaWkngDir + '{sample}/results/variants/diploidSV.vcf.gz'
     output:
         mantaWkngDir + '{sample}/results/variants/diploidSV.de_novo.vcf'
     params:
         i_gunzip = outputBindPath + mantaWkngDir + '{sample}/results/variants/diploidSV.vcf',
-        p1 = get_parent1_bam_container,
-        p2 = get_parent2_bam_container,
-        kid = get_kid_bam_container
+        p1 = get_p1_SM,
+        p2 = get_p2_SM,
+        kid = get_kid_SM
     singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
     shell:
         'gunzip {input};'
@@ -191,13 +200,7 @@ rule manta_list_output_files:
 
 rule manta_merge_list:
     input:
-        i1 = expand(mantaWkngDir + '{sample}/runWorkflow.py', sample=bamDict.keys()),
-        i2 = expand(mantaWkngDir + '{sample}/results/stats/alignmentStatsSummary.txt', sample=bamDict.keys()),
-        i3 = expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.tsv', sample=bamDict.keys()),
-        i4 = expand(mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml', sample=bamDict.keys()),
-        i5 = expand(mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv', sample=bamDict.keys()),
-        # # don't actually need all these above inputs for this step, but I want a uniform rule all with just the last file so these are here now.
-        i6 = expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
+        expand(parentDir + 'SV_files_for_annotation_manta.{sample}.txt', sample=bamDict.keys())
     output:
         parentDir + 'SV_files_for_annotation_manta.txt'
     shell:

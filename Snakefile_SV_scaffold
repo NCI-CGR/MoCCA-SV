@@ -7,6 +7,7 @@ those rules.
 '''
 
 import os
+import pysam
 
 # reference the config file
 conf = os.environ.get("conf")
@@ -66,9 +67,27 @@ elif anMode == 'de_novo':
             (family, parent1, parent2, kid) = line.split()
             if family in bamDict.keys():
                 sys.exit('ERROR: duplicate family IDs detected in' + bamList)
+            # use pysam to retrieve sample tag from bam header:
+            p1 = pysam.AlignmentFile(dataDir + parent1, 'rb')
+            p2 = pysam.AlignmentFile(dataDir + parent2, 'rb')
+            k = pysam.AlignmentFile(dataDir + kid, 'rb')
+            p1SM = p1.header['RG'][0]['SM']
+            p2SM = p2.header['RG'][0]['SM']
+            kSM = k.header['RG'][0]['SM']
             containerDict[family] = (inputBindPath + parent1, inputBindPath + parent2, inputBindPath + kid)
-            bamDict[family] = (dataDir + parent1, dataDir + parent2, dataDir + kid)
+            bamDict[family] = (dataDir + parent1, dataDir + parent2, dataDir + kid, p1SM, p2SM, kSM)
 
+def get_kid_SM(wildcards):
+    (p1, p2, k, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
+    return p1SM
+
+def get_p1_SM(wildcards):
+    (p1, p2, k, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
+    return p2SM
+
+def get_p2_SM(wildcards):
+    (p1, p2, k, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
+    return kSM
 
 # functions to retrieve bam files by relationship (e.g. matching tumor and normal)
 '''
@@ -101,27 +120,27 @@ def get_normal_bam_container(wildcards):
     return normal
 
 def get_parent1_bam(wildcards):
-    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    (parent1, parent2, kid, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return parent1
 
 def get_parent1_index(wildcards):
-    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    (parent1, parent2, kid, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return parent1 + '.bai'
 
 def get_parent2_bam(wildcards):
-    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    (parent1, parent2, kid, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return parent2
 
 def get_parent2_index(wildcards):
-    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    (parent1, parent2, kid, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return parent2 + '.bai'
 
 def get_kid_bam(wildcards):
-    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    (parent1, parent2, kid, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return kid
 
 def get_kid_index(wildcards):
-    (parent1, parent2, kid) = bamDict[wildcards.sample]
+    (parent1, parent2, kid, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return kid + '.bai'
 
 def get_parent1_bam_container(wildcards):

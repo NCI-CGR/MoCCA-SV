@@ -77,6 +77,8 @@ elif anMode == 'de_novo':
             containerDict[family] = (inputBindPath + parent1, inputBindPath + parent2, inputBindPath + kid)
             bamDict[family] = (dataDir + parent1, dataDir + parent2, dataDir + kid, p1SM, p2SM, kSM)
 
+inputDict = {}
+
 def get_kid_SM(wildcards):
     (p1, p2, k, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return p1SM

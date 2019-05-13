@@ -59,6 +59,8 @@ if [ "$clusterMode" == '"'"local"'"' ]; then
     cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete &> ${logDir}/MoCCA-SV_${DATE}.out"
 elif [ "$clusterMode" = '"'"unlock"'"' ]; then  # put in a convenience unlock
     cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --unlock"
+elif [ "$clusterMode" = '"'"dryrun"'"' ]; then  # put in a convenience dry run
+    cmd="conf=$configFile snakemake -n -p -s ${execDir}/Snakefile_SV_scaffold"
 else
     cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait 300 &> ${logDir}/MoCCA-SV_${DATE}.out"
     # --nt - keep temp files - can use while developing, especially for compare and annotate module.

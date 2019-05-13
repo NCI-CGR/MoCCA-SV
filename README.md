@@ -71,9 +71,19 @@ To add a caller, three new elements are required: a snakefile to run the calling
     Best_pair 123_3S.bam 456_2M.bam 
     ```
 
+  - De novo mode:
+    - Four space-delimited, headerless columns: family ID, parent1, parent2, child
+    - File names only
+    - Example:
+
+    ```
+    Family_A mom.bam dad.bam child.bam
+    F1234_1 parentA.bam parentB.bam child_1.bam
+    F1234_2 parentA.bam parentB.bam child_2.bam
+    ```
+
   - Tumor only mode:
   - Germline mode:
-  - De novo mode:
 
 - Sample files for __annotateOnly__ mode:
   - Note that this sample file is automatically generated if MoCCA-SV is used to call the data

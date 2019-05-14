@@ -162,6 +162,7 @@ __Cluster parameters__
     ```
   - If you are not on a cluster, you can run in local mode by entering `'local'`
   - If snakemake has locked the working directory, you can unlock by entering `'unlock'`
+- `latency:` Enter the number of seconds to wait for snakemake to detect rule output.  Use 300+ if running on a cluster.
 - `maxNumJobs:` Enter the maximum number of jobs to run in parallel; N/A if running locally
 - `maxThreads:` Assign the number of threads for each caller listed in `callers:` above, in matching order.  For callers that can not use multi-threading, assign 1.  Assign 1 if running locally and/or without multi-threading.
 

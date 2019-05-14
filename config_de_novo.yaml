@@ -38,6 +38,7 @@ tempDir: '/ttemp/ballewbj/sv/de_novo'
 
 #### Cluster parameters ####
 clusterMode: 'qsub -V -S /bin/sh -q long.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_de_novo/logs -j y'
+latency: 600
 maxNumJobs: 40
 maxThreads:
 - 4

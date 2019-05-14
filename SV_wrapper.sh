@@ -36,6 +36,7 @@ tempDir=$(awk '($0~/^tempDir/){print $2}' $configFile | sed "s/['\"]//g")
 refGenome=$(awk '($0~/^refGenome/){print $2}' $configFile | sed "s/['\"]//g")
 refDir=${refGenome%/*}
 numJobs=$(awk '($0~/^maxNumJobs/){print $2}' $configFile | sed "s/['\"]//g")
+latency=$(awk '($0~/^latency/){print $2}' $configFile | sed "s/['\"]//g")
 clusterLine=$(awk '($0~/^clusterMode/){print $0}' $configFile | sed "s/\"/'/g")  # allows single or double quoting of the qsub command in the config file
 clusterMode='"'$(echo $clusterLine | awk -F\' '($0~/^clusterMode/){print $2}')'"'
 
@@ -62,7 +63,7 @@ elif [ "$clusterMode" = '"'"unlock"'"' ]; then  # put in a convenience unlock
 elif [ "$clusterMode" = '"'"dryrun"'"' ]; then  # put in a convenience dry run
     cmd="conf=$configFile snakemake -n -p -s ${execDir}/Snakefile_SV_scaffold"
 else
-    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait 300 &> ${logDir}/MoCCA-SV_${DATE}.out"
+    cmd="conf=$configFile snakemake -p -s ${execDir}/Snakefile_SV_scaffold --use-singularity --singularity-args ${sing_arg} --rerun-incomplete --cluster ${clusterMode} --jobs $numJobs --latency-wait ${latency} &> ${logDir}/MoCCA-SV_${DATE}.out"
     # --nt - keep temp files - can use while developing, especially for compare and annotate module.
 fi
 

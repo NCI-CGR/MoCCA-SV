@@ -31,6 +31,10 @@ my $yaml;
 # Check that required directories exist
 my $execDir = check_dir($yaml->[0]->{execDir}); 
 
+my $latency = $yaml->[0]->{latency};
+chomp($latency);
+die "ERROR: Latency must be a positive integer.\n" if ($latency !~ /^[0-9]+$/);
+
 my $numJobs = $yaml->[0]->{maxNumJobs};
 chomp($numJobs);
 

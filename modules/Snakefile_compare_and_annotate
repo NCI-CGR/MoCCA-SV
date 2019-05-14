@@ -165,7 +165,7 @@ rule convert_to_bed:
         else:
             inputDict = {}
             firstLine = ''
-            with open(input) as f:
+            with open(str(input)) as f:
                 firstLine = f.readline().split()[1:]
                 if collections.Counter(firstLine) != collections.Counter(CALLERS):
                     sys.exit('ERROR: input file headers do not match callers in config file.\n')

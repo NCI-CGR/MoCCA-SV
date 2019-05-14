@@ -100,9 +100,9 @@ publicDatasetsPath = execDir + 'annotation/public_datasets/hg19_chr/' if genomeB
 genesPath = execDir + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
 
 # bind points in container
-genomicContextBindPath = execBindPath + 'annotation/genomic_context/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genomic_context/GRCh37_no_chr/'
-publicDatasetsBindPath = execBindPath + 'annotation/public_datasets/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/public_datasets/GRCh37_no_chr/'
-genesBindPath = execBindPath + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execDir + 'annotation/genes/GRCh37_no_chr/'
+genomicContextBindPath = execBindPath + 'annotation/genomic_context/hg19_chr/' if genomeBuild == 'hg19' else execBindPath + 'annotation/genomic_context/GRCh37_no_chr/'
+publicDatasetsBindPath = execBindPath + 'annotation/public_datasets/hg19_chr/' if genomeBuild == 'hg19' else execBindPath + 'annotation/public_datasets/GRCh37_no_chr/'
+genesBindPath = execBindPath + 'annotation/genes/hg19_chr/' if genomeBuild == 'hg19' else execBindPath + 'annotation/genes/GRCh37_no_chr/'
 
 
 

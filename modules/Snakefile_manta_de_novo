@@ -70,7 +70,7 @@ rule manta_create_run_script:
         outFile = mantaTempDir + '{sample}/runWorkflow.py',
         p = mantaTempDir + '{sample}/runWorkflow.py.config.pickle'
     params:
-        outParam = tempBindPath + 'manta_de_novo/{sample}', # mantaTempDir + 'manta_de_novo/{sample}', #
+        outParam = tempBindPath + 'manta_de_novo/{sample}',
         ref = refBindPath + refFile
     singularity: 'shub://bballew/NGS_singularity_recipes:manta_1-4-0'
     shell:

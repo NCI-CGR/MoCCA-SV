@@ -92,8 +92,8 @@ rule breakdancer_combine_results:
 
 rule breakdancer_detect_de_novo:
     input:
-        p1 = get_parent1_bam,
-        p2 = get_parent2_bam,
+        p1 = get_parent1_bam_container,
+        p2 = get_parent2_bam_container,
         i = breakdancerWkngDir + 'calls/all.{sample}.out'
     output:
         breakdancerWkngDir + 'de_novo/{sample}.out'

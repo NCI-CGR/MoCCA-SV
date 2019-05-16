@@ -77,8 +77,6 @@ elif anMode == 'de_novo':
             containerDict[family] = (inputBindPath + parent1, inputBindPath + parent2, inputBindPath + kid)
             bamDict[family] = (dataDir + parent1, dataDir + parent2, dataDir + kid, p1SM, p2SM, kSM)
 
-inputDict = {}
-
 def get_kid_SM(wildcards):
     (p1, p2, k, p1SM, p2SM, kSM) = bamDict[wildcards.sample]
     return p1SM
@@ -184,7 +182,7 @@ elif callAndAnnotate:
         input:
             expand(annOutDir + '{caller}/interchromosomal/{sample}.compare.summary', caller=CALLERS, sample=bamDict.keys()),
             expand(annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison', caller=CALLERS, sample=bamDict.keys()),
-            expand(annOutDir + 'intrachromosomal_SVs_{sample}', sample=inputDict.keys())
+            expand(annOutDir + 'intrachromosomal_SVs_{sample}', sample=bamDict.keys())
 elif annotateOnly:
     include: 'modules/Snakefile_compare_and_annotate'
     rule all:

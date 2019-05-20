@@ -6,16 +6,16 @@ callers:            # available callers: svaba, breakdancer, delly, manta
 - delly
 - manta
 runMode:
-  callAndAnnotate: no
+  callAndAnnotate: yes
   callOnly: no
-  annotateOnly: yes
+  annotateOnly: no
 refGenome: '/DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/hg19_canonical_correct_chr_order.fa'
 genomeBuild: 'hg19'  # hg19 (chr) or b37 (no chr)
    # consider pulling from ref genome file or dict index?
 
 
 #### Annotation parameters ####
-annotateFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/chr5_list_output_test/SV_files_for_annotation.txt'
+annotateFile: #'/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/chr5_list_output_test/SV_files_for_annotation.txt'
 annotationParams:
   interchromPadding: 50
   insertionPadding: 500
@@ -26,26 +26,20 @@ annotationParams:
 
 #### Samples to analyze ####
 inFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input/tests_chr5bams.txt'  # for testing TN
-  # must contain three columns: sample name, tumor bam, normal bam (space-delimited)
-  # or, if de novo, must contain family ID, parent1 bam, parent2 bam, child bam
-    # check that family IDs are unique.  If there's more than one kid per family, they need two lines, something like family_kid1/nfamily_kid2.  family ID becomes sample name.
-  # or, if germline, must contain sample name and bam
-  # or, if tumor-only, must contain tumor bam...and PON?
-  # ALSO, if the callers available have differing capabilities, be sure to have a check in the snakefile (e.g. if delly can't do tumor-only, check for delly=yes and react appropriately in the TO snakefile)
 
 
 #### Directories ####
 inDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input'
 execDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev'  # where the snakefiles are
-outDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out'
-logDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs'
+outDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_TN'
+logDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_TN/logs'
 tempDir: '/ttemp/ballewbj/sv'
 
 
 #### Cluster parameters ####
-clusterMode: 'qsub -V -S /bin/sh -q long.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out/logs -j y'
-latency: 300
-maxNumJobs: 8
+clusterMode: 'qsub -V -S /bin/sh -q long.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_TN/logs -j y'
+latency: 600
+maxNumJobs: 40
 maxThreads:
 - 4
 - 1

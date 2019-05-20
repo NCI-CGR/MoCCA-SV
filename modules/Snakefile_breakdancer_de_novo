@@ -91,16 +91,24 @@ rule breakdancer_combine_results:
         'cat {output.t3} {output.t2} > {output.o}'
 
 rule breakdancer_detect_de_novo:
+    '''
+    breakdancer includes all sample file names that have evidence for
+    a given SV.  So, to find de novos, look for rows without the parent
+    filenames.  Note that the filenames are with the inside-container
+    paths.
+    '''
     input:
-        p1 = get_parent1_bam_container,
-        p2 = get_parent2_bam_container,
+        p1 = get_parent1_bam,
+        p2 = get_parent2_bam,
         i = breakdancerWkngDir + 'calls/all.{sample}.out'
     output:
         breakdancerWkngDir + 'de_novo/{sample}.out'
     params:
-        path = execDir + 'scripts/'
+        path = execDir + 'scripts/',
+        p1 = get_parent1_bam_container,
+        p2 = get_parent2_bam_container
     shell:
-        '{params.path}breakdancer_de_novo_awk.sh {input.p1} {input.p2} {input.i} > {output}'
+        '{params.path}breakdancer_de_novo_awk.sh {params.p1} {params.p2} {input.i} > {output}'
 
 # rule breakdancer_de_novo_distributions:
 #     input:

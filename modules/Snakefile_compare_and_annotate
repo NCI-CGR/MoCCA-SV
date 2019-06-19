@@ -836,8 +836,9 @@ rule create_superset:
     input:
         expand(annOutDir + '{caller}/intrachromosomal/{{sample}}_annotated_comparison_with_orig', caller=CALLERS)
     output:
-        annOutDir + 'intrachromosomal_SVs_{sample}'
+        s = annOutDir + 'intrachromosomal_SVs_{sample}',
+        t = directory(localTempDir + 'sort/{sample}/')
     shell:
-        "cat {input} | sed '1!{{/^line_num/d;}}' | cut --complement -f1 | sort -k1,1n -k2,2n > {output}"
+        "cat {input} | sed '1!{{/^line_num/d;}}' | cut --complement -f1 | sort -T {output.t} -k1,1n -k2,2n > {output.s}"
 
 

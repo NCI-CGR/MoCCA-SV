@@ -29,6 +29,7 @@ outDir = config['outDir'].rstrip('/') + '/'  # ensure one trailing slash
 callAndAnnotate = config['runMode']['callAndAnnotate']
 callOnly = config['runMode']['callOnly']
 annotateOnly = config['runMode']['annotateOnly']
+localTempDir = config['tempDir'].rstrip('/') + '/'  # ensure one trailing slash
 
 '''
 These are the paths in the singularity containers that I'm binding to.

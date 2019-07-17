@@ -20,16 +20,10 @@ if [[ $input = *.gz ]]; then
     cmd_intra="zcat ${input} | ${cmd_add_linenum} | ${cmd_remove_headers} | ${cmd_find_intraSV} | ${cmd_get_intra_coords} | ${cmd_sort_intra_coords} > ${outDir}${sample}_intra.bed"
     cmd_end1="zcat ${input} | ${cmd_add_linenum} | ${cmd_remove_headers} | ${cmd_find_interSV} | ${cmd_get_end1_coords} > ${outDir}${sample}_end1.bed"
     cmd_end2="zcat ${input} | ${cmd_add_linenum} | ${cmd_remove_headers} | ${cmd_find_interSV} | ${cmd_get_end2_coords} > ${outDir}${sample}_end2.bed"
-    # zcat $input | awk '{FS=OFS="\t"}{print $0, NR}' | grep -v "^#" | grep -v $varType | awk '{FS=OFS="\t"} {print $1, $2, gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrGLhs37d]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, "\\1", "g"), $NF}' | awk '{FS=OFS="\t"} ($2<$3){print $0} ($2>$3){print $1,$3,$2,$4} ($2==$3){print $1,$2,$3+1,$4}' > $outDir$sample"_intra.bed"
-    # zcat $input | awk '{FS=OFS="\t"}{print $0, NR}' | grep -v "^#" | grep $varType | awk '{FS=OFS="\t"} ($2!=0){print $1, $2 - 1, $2, $NF} ($2==0){print $1, $2, $2+1, $NF}' > $outDir$sample"_end1.bed"
-    # zcat $input | awk '{FS=OFS="\t"}{print $0, NR}' | grep -v "^#" | grep $varType | awk '{FS=OFS="\t"} {print gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]]([chrGLhs37d]*[0-9MTXY.]+):[0-9]+[\[\]].*/, "\\1", "g"), gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrGLhs37d]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, "\\1", "g") - 1, gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrGLhs37d]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, "\\1", "g"), $NF} }' > $outDir$sample"_end2.bed"
 else
     cmd_intra="${cmd_add_linenum} ${input} | ${cmd_remove_headers} | ${cmd_find_intraSV} | ${cmd_get_intra_coords} | ${cmd_sort_intra_coords} > ${outDir}${sample}_intra.bed"
     cmd_end1="${cmd_add_linenum} ${input} | ${cmd_remove_headers} | ${cmd_find_interSV} | ${cmd_get_end1_coords} > ${outDir}${sample}_end1.bed"
     cmd_end2="${cmd_add_linenum} ${input} | ${cmd_remove_headers} | ${cmd_find_interSV} | ${cmd_get_end2_coords} > ${outDir}${sample}_end2.bed"
-    # awk '{FS=OFS="\t"}{print $0, NR}' $input | grep -v "^#" | grep -v $varType | awk '{FS=OFS="\t"} {print $1, $2, gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrGLhs37d]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, "\\1", "g"), $NF}' | awk '{FS=OFS="\t"} ($2<$3){print $0} ($2>$3){print $1,$3,$2,$4} ($2==$3){print $1,$2,$3+1,$4}' > $outDir$sample"_intra.bed"
-    # awk '{FS=OFS="\t"}{print $0, NR}' $input | grep -v "^#" | grep $varType | awk '{FS=OFS="\t"} ($2!=0){print $1, $2 - 1, $2, $NF} ($2==0){print $1, $2, $2+1, $NF}' > $outDir$sample"_end1.bed"
-    # awk '{FS=OFS="\t"}{print $0, NR}' $input | grep -v "^#" | grep $varType | awk '{FS=OFS="\t"} {print gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]]([chrGLhs37d]*[0-9MTXY.]+):[0-9]+[\[\]].*/, "\\1", "g"), gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrGLhs37d]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, "\\1", "g") - 1, gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrGLhs37d]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, "\\1", "g"), $NF}' > $outDir$sample"_end2.bed"
 fi
 
 echo $cmd_intra

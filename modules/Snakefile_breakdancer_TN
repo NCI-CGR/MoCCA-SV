@@ -37,12 +37,14 @@ rule breakdancer_bam_qc:
         t2 = temp(breakdancerWkngDir + 'config/{sample}.t2'),
         t3 = temp(breakdancerWkngDir + 'config/{sample}.t3')
     params:
-        path = execBindPath + 'scripts/'
+        path = execBindPath + 'scripts/',
+        t = get_tumor_bam_container,
+        n = get_normal_bam_container
     singularity: 'shub://bballew/NGS_singularity_recipes:samtools_1-9'
     shell:
         '{params.path}breakdancer_cfg_qc.sh {input.c} {output.t1};'
-        '{params.path}breakdancer_qc.sh {input.n} {input.c} {output.t2};'
-        '{params.path}breakdancer_qc.sh {input.t} {input.c} {output.t3};'
+        '{params.path}breakdancer_qc.sh {params.n} {input.c} {output.t2};'
+        '{params.path}breakdancer_qc.sh {params.t} {input.c} {output.t3};'
         'cat {output.t1} {output.t2} {output.t3} > {output.o}'
 
 rule breakdancer_run_per_chrom:

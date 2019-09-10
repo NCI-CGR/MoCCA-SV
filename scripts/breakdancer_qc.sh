@@ -13,7 +13,7 @@ out=$3
 echo "$my_bam QC:" >> $out
 
 num1=$(samtools view -H $my_bam | grep -c @RG)
-num2=$(grep -c $t_bam $my_config)
+num2=$(grep -c $my_bam $my_config)
 if [ "$num1" -lt "$num2" ]; then
 	echo "FAIL: $my_bam may be missing RG or LB information in header." >> $out
 else

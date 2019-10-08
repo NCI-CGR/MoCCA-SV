@@ -161,7 +161,7 @@ rule convert_to_bed:
         # a problem.
         if annotateOnly:
             shell('{params.path}{wildcards.caller}_to_bed.sh {input} {wildcards.sample} {params.annOutDir}')
-            shell("cat {input} | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}") # nl -nrz > {output.o4}')
+            shell("if [[ {input} = *.gz ]]; then zcat {input} | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}; else cat {input} | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}; fi") # nl -nrz > {output.o4}')
         else:
             inputDict = {}
             firstLine = ''

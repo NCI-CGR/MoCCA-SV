@@ -47,6 +47,7 @@ insertionPad = config['annotationParams']['insertionPadding']
 crossCallerOverlap = config['annotationParams']['crossCallerOverlap']
 genContextOverlap = config['annotationParams']['genomicContextOverlap']
 publicDataOverlap = config['annotationParams']['publicDataOverlap']
+inputDict = {}
 if annotateOnly:
     annFile = config['annotateFile']
     inputDict = {}
@@ -150,7 +151,7 @@ rule convert_to_bed:
         o1 = annOutDir + '{caller}/bed_input/{sample}_intra.bed',
         o2 = annOutDir + '{caller}/bed_input/{sample}_end1.bed',
         o3 = annOutDir + '{caller}/bed_input/{sample}_end2.bed',
-        o4 = temp(annOutDir + '{caller}/bed_input/{sample}_orig')
+        o4 = annOutDir + '{caller}/bed_input/{sample}_orig'
     params:
         path = execDir + 'scripts/',
         annOutDir = annOutDir + '{caller}/bed_input/'
@@ -176,7 +177,7 @@ rule convert_to_bed:
             l = inputDict[wildcards.sample]
             i = firstLine.index(wildcards.caller)
             shell('{params.path}{wildcards.caller}_to_bed.sh ' + l[i] + ' {wildcards.sample} {params.annOutDir}')
-            shell("if [[ {input} = *.gz ]]; then zcat " + l[i] + " | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}; else cat " + l[i] + " | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}; fi") # nl -nrz > {output.o4}')
+            shell("if [[ " + l[i] + " = *.gz ]]; then zcat " + l[i] + " | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}; else cat " + l[i] + " | tr -s ' ' | sed 's/[ \t]/__/g' | awk '{{print NR, $0}}' > {output.o4}; fi") # nl -nrz > {output.o4}')
 
 rule remove_identical_calls:
     '''

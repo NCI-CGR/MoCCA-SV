@@ -32,7 +32,7 @@ rule delly_merge_SVs_by_cohort:
     Get a unified call set of preliminary SVs in samples.
     '''
     input:
-        expand(dellyWkngDir + 'calls/{sample}_type{{type}}.bcf', sample=sampleDict),
+        expand(dellyWkngDir + 'calls/{sample}_type{{type}}.bcf', sample=bamDict.keys()),
     output:
         dellyWkngDir + 'merged_by_cohort/merged_{type}.bcf'
     params:
@@ -75,7 +75,7 @@ rule delly_re_genotype:
 
 rule delly_merge_regeno_by_cohort:
     input:
-        expand(dellyWkngDir + 're-genoytped/{sample}_type{{type}}.bcf', sample=sampleDict)
+        expand(dellyWkngDir + 're-genoytped/{sample}_type{{type}}.bcf', sample=bamDict.keys())
     output:
         dellyWkngDir + 're-geno_merged_by_cohort/merged_{type}.bcf'
     singularity:

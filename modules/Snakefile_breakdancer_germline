@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-breakdancerWkngDir =  'breakdancer_de_novo/'
+breakdancerWkngDir =  'breakdancer_germline/'
 if config['genomeBuild'] == 'hg19':
     chrPrefix = 'chr'
 else:
@@ -20,7 +20,7 @@ rule breakdancer_config:
     singularity:
         'shub://bballew/NGS_singularity_recipes:breakdancer_1-4-5'  # contains samtools and breakdancer
     shell:
-        'bam2cfg.pl -g -h {params.p} > {output}'
+        'bam2cfg.pl -g -h {params} > {output}'
 
 rule breakdancer_bam_qc:
     input:

@@ -72,7 +72,7 @@ To add a caller, three new elements are required: a snakefile to run the calling
     ```
 
   - De novo mode:
-    - Four space-delimited, headerless columns: family ID, parent1, parent2, child
+    - Four space-delimited, headerless columns: family ID, parent1 bam, parent2 bam, child bam
     - File names only
     - Example:
 
@@ -84,6 +84,14 @@ To add a caller, three new elements are required: a snakefile to run the calling
 
   - Tumor only mode:
   - Germline mode:
+    - Two space-delimited, headerless columns: subject ID, bam
+    - File name only (no path)
+    - Example:
+
+    ```
+    Patient1 15324.bam
+    Patient2 pt2.bam
+    ```
 
 - Sample files for __annotateOnly__ mode:
   - Note that this sample file is automatically generated if MoCCA-SV is used to call the data

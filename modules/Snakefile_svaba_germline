@@ -19,19 +19,15 @@ rule svaba_call:
         pac = ref + '.pac',
         sa = ref + '.sa'
     output:
-        svabaTempDir + 'calls/{sample}.alignments.txt.gz',
-        svabaTempDir + 'calls/{sample}.bps.txt.gz',
-        svabaTempDir + 'calls/{sample}.contigs.bam',
-        svabaTempDir + 'calls/{sample}.discordant.txt.gz',
-        svabaTempDir + 'calls/{sample}.log',
-        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',  # will this output be here for germline?
-        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+        temp(svabaTempDir + 'calls/{sample}.alignments.txt.gz'),
+        temp(svabaTempDir + 'calls/{sample}.bps.txt.gz'),
+        temp(svabaTempDir + 'calls/{sample}.contigs.bam'),
+        temp(svabaTempDir + 'calls/{sample}.discordant.txt.gz'),
+        temp(svabaTempDir + 'calls/{sample}.log'),
+        temp(svabaTempDir + 'calls/{sample}.svaba.indel.vcf'),
+        temp(svabaTempDir + 'calls/{sample}.svaba.sv.vcf'),
+        temp(svabaTempDir + 'calls/{sample}.svaba.unfiltered.indel.vcf'),
+        temp(svabaTempDir + 'calls/{sample}.svaba.unfiltered.sv.vcf')
     threads: svabaNt
     params:
         r = refBindPath + refFile,
@@ -55,36 +51,28 @@ rule move_call_files:
         svabaTempDir + 'calls/{sample}.contigs.bam',
         svabaTempDir + 'calls/{sample}.discordant.txt.gz',
         svabaTempDir + 'calls/{sample}.log',
-        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
-        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+        svabaTempDir + 'calls/{sample}.svaba.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.sv.vcf'
     output:
         svabaWkngDir + 'calls/{sample}.alignments.txt.gz',
         svabaWkngDir + 'calls/{sample}.bps.txt.gz',
         svabaWkngDir + 'calls/{sample}.contigs.bam',
         svabaWkngDir + 'calls/{sample}.discordant.txt.gz',
         svabaWkngDir + 'calls/{sample}.log',
-        svabaWkngDir + 'calls/{sample}.svaba.germline.indel.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.germline.sv.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.somatic.indel.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.somatic.sv.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
-        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
+        svabaWkngDir + 'calls/{sample}.svaba.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.sv.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.indel.vcf',
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.sv.vcf'
     params:
         wDir = svabaWkngDir + 'calls/'
     shell:
-        'mv {input} {params.wDir}'
+        'cp -l {input} {params.wDir}'
 
 rule svaba_list_output_files:
     input:
-        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf'
+        svabaWkngDir + 'calls/{sample}.svaba.unfiltered.sv.vcf'
     output:
         temp(parentDir + 'SV_files_for_annotation_svaba.{sample}.txt')
     params:

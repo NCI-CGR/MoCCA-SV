@@ -1,0 +1,52 @@
+#### Basic analysis parameters ####
+analysisMode: 'germline'  # TN, TO, germline, de_novo
+callers:            # available callers: svaba, breakdancer, delly, manta
+- svaba
+- breakdancer
+- delly
+- manta
+runMode:
+  callAndAnnotate: yes
+  callOnly: no
+  annotateOnly: no
+refGenome: '/DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/Homo_sapiens_assembly19.fasta'
+genomeBuild: 'b37'  # hg19 (chr) or b37 (no chr)
+   # consider pulling from ref genome file or dict index?
+
+
+#### Annotation parameters ####
+annotateFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/chr5_list_output_test/SV_files_for_annotation.txt'
+annotationParams:
+  interchromPadding: 50
+  insertionPadding: 500
+  crossCallerOverlap: 0.7
+  genomicContextOverlap: 0.7
+  publicDataOverlap: 0.7
+
+
+#### Samples to analyze ####
+inFile: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input/de_novo_tests_chr5bams.txt' # for testing de_novo
+
+
+#### Directories ####
+inDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/snake_tests/test_input'
+execDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev'  # where the snakefiles are
+outDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_germline'
+logDir: '/DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_germline/logs'
+tempDir: '/ttemp/ballewbj/sv/germline'
+
+
+#### Cluster parameters ####
+clusterMode: 'qsub -V -S /bin/sh -q long.q -o /DCEG/CGF/Bioinformatics/Production/Bari/Struct_var_pipeline_dev/pipeline_dev/test_out_de_novo/logs -j y'
+latency: 600
+maxNumJobs: 40
+maxThreads:
+- 4
+- 1
+- 1
+- 4
+
+
+#### Caller-specific parameters ####
+# Consider adding a user-configurable command line for each caller?
+

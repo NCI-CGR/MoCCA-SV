@@ -144,15 +144,10 @@ rule manta_move_call_files:
         mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz',
         mantaWkngDir + '{sample}/results/variants/somaticSV.vcf.gz.tbi'
     params:
-        wkngDir = mantaWkngDir + '{sample}/',
-        wkngDir1 = mantaWkngDir + '{sample}/results/stats/',
-        wkngDir2 = mantaWkngDir + '{sample}/results/variants/',
-        tempDir1 = mantaTempDir + '{sample}/results/stats/',
-        tempDir2 = mantaTempDir + '{sample}/results/variants/'
+        oDir = mantaTempDir + '{sample}/',
+        wDir = mantaWkngDir
     shell:
-        'mv -t {params.wkngDir} {input.i1} {input.i2} {input.i3} {input.i4} {input.i5};'
-        'mv -t {params.wkngDir1} {params.tempDir1}*;'
-        'mv -t {params.wkngDir2} {params.tempDir2}*'
+        'cp -r -l {params.oDir} {params.wDir}; rm -r {params.oDir}'
 
 rule manta_list_output_files:
     input:

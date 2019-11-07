@@ -44,7 +44,7 @@ rule svaba_call:
             -a {params.o}{wildcards.sample}'
             # -B {input.excl} \
 
-rule move_call_files:
+rule svaba_move_call_files:
     input:
         svabaTempDir + 'calls/{sample}.alignments.txt.gz',
         svabaTempDir + 'calls/{sample}.bps.txt.gz',
@@ -68,7 +68,8 @@ rule move_call_files:
     params:
         wDir = svabaWkngDir + 'calls/'
     shell:
-        'cp -l {input} {params.wDir}'
+        'mv {input} {params.wDir}'
+        #'cp -l {input} {params.wDir}'
 
 rule svaba_list_output_files:
     input:

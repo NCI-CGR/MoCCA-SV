@@ -72,21 +72,32 @@ rule manta_move_call_files:
     '''Use cp -l instead of mv
     The way our cluster separates storage pools can create an occasional
     Input/output error with mv.  Use cp -l instead, then delete the temps.
+
+    NEVERMIND.  Cluster config change.  New scratch space is on different
+    device; can't hard link.
     '''
     input:
-        mantaTempDir + '{sample}/runWorkflow.py',
-        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
-        mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
-        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
-        mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
-        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
-        mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
-        mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
-        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
-        mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
-        mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
+        i1 = mantaTempDir + '{sample}/runWorkflow.py',
+        i2 = mantaTempDir + '{sample}/runWorkflow.py.config.pickle',
+        i3 = mantaTempDir + '{sample}/workflow.error.log.txt',
+        i4 = mantaTempDir + '{sample}/workflow.exitcode.txt',
+        i5 = mantaTempDir + '{sample}/workflow.warning.log.txt',
+        i6 = mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
+        i7 = mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
+        i8 = mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz',
+        i9 = mantaTempDir + '{sample}/results/variants/candidateSV.vcf.gz.tbi',
+        i10 = mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz',
+        i11 = mantaTempDir + '{sample}/results/variants/diploidSV.vcf.gz.tbi',
+        i12 = mantaTempDir + '{sample}/results/stats/alignmentStatsSummary.txt',
+        i13 = mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.tsv',
+        i14 = mantaTempDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
+        i15 = mantaTempDir + '{sample}/results/stats/svLocusGraphStats.tsv'
     output:
         mantaWkngDir + '{sample}/runWorkflow.py',
+        mantaWkngDir + '{sample}/runWorkflow.py.config.pickle',
+        mantaWkngDir + '{sample}/workflow.error.log.txt',
+        mantaWkngDir + '{sample}/workflow.exitcode.txt',
+        mantaWkngDir + '{sample}/workflow.warning.log.txt',
         mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
         mantaWkngDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',
         mantaWkngDir + '{sample}/results/variants/candidateSV.vcf.gz',
@@ -98,10 +109,19 @@ rule manta_move_call_files:
         mantaWkngDir + '{sample}/results/stats/svCandidateGenerationStats.xml',
         mantaWkngDir + '{sample}/results/stats/svLocusGraphStats.tsv'
     params:
-        oDir = mantaTempDir + '{sample}/',
-        wDir = mantaWkngDir
+        # oDir = mantaTempDir + '{sample}/',
+        # wDir = mantaWkngDir
+        wkngDir = mantaWkngDir + '{sample}/',
+        wkngDir1 = mantaWkngDir + '{sample}/results/stats/',
+        wkngDir2 = mantaWkngDir + '{sample}/results/variants/',
+        tempDir1 = mantaTempDir + '{sample}/results/stats/',
+        tempDir2 = mantaTempDir + '{sample}/results/variants/'
     shell:
-        'cp -r -l {params.oDir} {params.wDir}; rm -r {params.oDir}'
+        'mv -t {params.wkngDir} {input.i1} {input.i2} {input.i3} {input.i4} {input.i5};'
+        'mv -t {params.wkngDir1} {params.tempDir1}*;'
+        'mv -t {params.wkngDir2} {params.tempDir2}*'
+        #'cp -r -l {params.oDir} {params.wDir}; rm -r {params.oDir}'
+
 
 rule manta_list_output_files:
     input:

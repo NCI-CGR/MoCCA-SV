@@ -23,19 +23,19 @@ rule svaba_call:
         pac = ref + '.pac',
         sa = ref + '.sa'
     output:
-        temp(svabaTempDir + 'calls/{sample}.alignments.txt.gz'),
-        temp(svabaTempDir + 'calls/{sample}.bps.txt.gz'),
-        temp(svabaTempDir + 'calls/{sample}.contigs.bam'),
-        temp(svabaTempDir + 'calls/{sample}.discordant.txt.gz'),
-        temp(svabaTempDir + 'calls/{sample}.log'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf'),
-        temp(svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf')
+        svabaTempDir + 'calls/{sample}.alignments.txt.gz',
+        svabaTempDir + 'calls/{sample}.bps.txt.gz',
+        svabaTempDir + 'calls/{sample}.contigs.bam',
+        svabaTempDir + 'calls/{sample}.discordant.txt.gz',
+        svabaTempDir + 'calls/{sample}.log',
+        svabaTempDir + 'calls/{sample}.svaba.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.somatic.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.germline.sv.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.indel.vcf',
+        svabaTempDir + 'calls/{sample}.svaba.unfiltered.somatic.sv.vcf'
     threads: svabaNt
     params:
         r = refBindPath + refFile,
@@ -86,7 +86,7 @@ rule svaba_move_call_files:
     params:
         wDir = svabaWkngDir + 'calls/'
     shell:
-        'cp -l {input} {params.wDir}'
+        'mv {input} {params.wDir}'
 
 rule svaba_rename:
     '''

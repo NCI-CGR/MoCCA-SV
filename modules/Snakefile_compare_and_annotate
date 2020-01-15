@@ -9,10 +9,10 @@ Various strategies to harmonize SVs:
   2.  End-matching: if both ends are within X bases, then call it a match
 
 formats:
-breakdancer has it's own format, but it has chr1 pos1 and chr2 pos2
-delly is vcf, has chr1 pos1 and chr2 pos2 (the latter two in INFO)
-manta is vcf, has chr1 pos1 and END in the INFO (possibly more for BND type?  MATE_ID?)
-svaba is vcf, has chr1 pos1 and chr2 pos2 in the ALT field
+breakdancer has it's own format, but it has chr1 start and chr2 end
+delly is vcf, has chr1 start and chr2 end (the latter two in INFO)
+manta is vcf, has chr1 start and END in the INFO (possibly more for BND type?  MATE_ID?)
+svaba is vcf, has chr1 start and chr2 end in the ALT field
 
 types reported:
 breakdancer
@@ -391,7 +391,7 @@ rule parse_intra_comparison:
     (breakdancer) SV matches both the 2nd and 3rd (delly) SVs.  The outer coords for each
     of the two pairwise comparisons (SV1-SV2, SV1-SV3) happen to be identical.
     
-    #CHROM  pos1    pos2    svaba   breakdancer     delly   manta   caller_count    match_region
+    #CHROM  start    end    svaba   breakdancer     delly   manta   caller_count    match_region
     5       98858347        99727540        orig    2       0       0       2       5:98731341-99727540
     5       98731341        99706167        1       orig    0       0       2       5:98731341-99727540
     5       98731341        99705579        1       orig    0       0       2       5:98731341-99727540
@@ -407,7 +407,7 @@ rule parse_intra_comparison:
         with open(str(input), 'r') as f:
             for line in f:
                 fields = line.split()
-                # fields: chr, pos1, pos2, caller output line #, file source of match, match chr, match pos1, match pos2, match line #, # bases overlapping
+                # fields: chr, start, end, caller output line #, file source of match, match chr, match start, match end, match line #, # bases overlapping
                 key, values = fields[3], fields[0:3]  # key is line number, fields are first SV coords, match are matching SV coords
                 values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
                 if key not in svDict:
@@ -431,7 +431,7 @@ rule parse_intra_comparison:
                     elif wildcards.caller == CALLERS[i]:
                         svDict[key][i+3] = 'orig'  # write 'orig' for self-caller matches
         with open(str(output), 'w') as out:
-            out.write('\t'.join(['line_num', '#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count', 'match_region']) + '\n')  # write header
+            out.write('\t'.join(['line_num', '#CHROM', 'start', 'end'] + [str(x) for x in CALLERS] + ['caller_count', 'match_region']) + '\n')  # write header
             int_svDict = {int(k) : v for k, v in svDict.items()} 
             for key, values in sorted(int_svDict.items()):
                 for i in range(3, (len(CALLERS) + 3)):  # count the number of callers with at least one overlapping hit
@@ -539,16 +539,17 @@ rule parse_inter_comparison:
         with open(str(input.end1), 'r') as f1:
             for line in f1:
                 fields = line.split()
-                # fields: chr, pos1, pos2, caller output line #, file source of match, match chr, match pos1, match pos2, match line #, # bases overlapping
+                # fields: chr, start, end, caller output line #, file source of match, match chr, match start, match end, match line #, # bases overlapping
                 key, values = fields[3], fields[0:3]
+                values.extend(['.', '.', '.'])  # placeholders for chr2, start2, end2
                 values.extend([0] * (len(CALLERS) + 1))  # initialize a count of 0 for each caller and for the caller count
                 if key not in svDict:
                     svDict[key] = values
                 for i in range(0, len(CALLERS)):  # detect whether there are any overlapping occurences of end1
                     if CALLERS[i] in fields[4] and wildcards.caller != CALLERS[i]:
-                        svDict[key][i+3] = 1  # set to 1 to indicate a match
+                        svDict[key][i + 6] = 1  # set to 1 to indicate a match
                     elif wildcards.caller == CALLERS[i]:
-                        svDict[key][i+3] = 'orig'  # write 'orig' for self-caller matches
+                        svDict[key][i + 6] = 'orig'  # write 'orig' for self-caller matches
         with open(str(input.end2), 'r') as f2:
             for line in f2:
                 fields = line.split()
@@ -556,18 +557,22 @@ rule parse_inter_comparison:
                 if key not in svDict:
                     print('ERROR: matching end2 breakpoint not detected.')
                     exit(1)
+                else:
+                    svDict[key][3] = fields[0]  # assign chr2, start2, and end2
+                    svDict[key][4] = fields[1]
+                    svDict[key][5] = fields[2]
                 for i in range(0, len(CALLERS)):  # count overlapping occurences of end1 AND end2
-                    if CALLERS[i] in fields[4] and svDict[key][i+3] == 1:
-                        svDict[key][i+3] = 2  # set to 2 to indicate that both ends match
+                    if CALLERS[i] in fields[4] and svDict[key][i + 6] == 1:
+                        svDict[key][i + 6] = 2  # set to 2 to indicate that both ends match
         with open(str(output), 'w') as out:
-            out.write('\t'.join(['line_num', '#CHROM', 'pos1', 'pos2'] + [str(x) for x in CALLERS] + ['caller_count']) + '\n')  # write header
+            out.write('\t'.join(['line_num', '#CHROM', 'start', 'end', 'chrom2', 'start2', 'end2'] + [str(x) for x in CALLERS] + ['caller_count']) + '\n')  # write header
             for key, values in svDict.items():
-                for i in range(3, (len(CALLERS) + 3)):
+                for i in range(6, (len(CALLERS) + 6)):
                     # count callers reporting this sv, including self:
-                    if values[i] == 2:  
+                    if values[i] == 2:
                         svDict[key][i] = int(values[i] / 2)
                         svDict[key][-1] += 1
-                    elif values[i] == 'orig':  
+                    elif values[i] == 'orig':
                         svDict[key][-1] += 1
                     else:
                         svDict[key][i] = 0
@@ -827,19 +832,29 @@ rule retrieve_caller_details:
     '''
     input:
         i1 = annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison',
-        i2 = annOutDir + '{caller}/bed_input/{sample}_orig'
+        i2 = annOutDir + '{caller}/bed_input/{sample}_orig',
+        i3 = annOutDir + '{caller}/interchromosomal/{sample}.compare.summary'
     output:
-        annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison_with_orig'
+        o1 = annOutDir + '{caller}/intrachromosomal/{sample}_annotated_comparison_with_orig',
+        o2 = annOutDir + '{caller}/interchromosomal/{sample}.compare.summary_with_orig'  # update name when annotation etc. has been implemented
     shell:
-        "cat <(echo -e \"$(head -n1 {input.i1})\tOriginal_caller_output\") <(join -t$'\t' -a1 <(tail -n +2 {input.i1} | sort -t$'\t' -k1,1 --stable) <(cat {input.i2} | tr ' ' '\t' | sort -t$'\t' -k1,1 --stable) | sort -t$'\t' -k1,1n) > {output}"
+        "cat <(echo -e \"$(head -n1 {input.i1})\tOriginal_caller_output\") <(join -t$'\t' -a1 <(tail -n +2 {input.i1} | sort -t$'\t' -k1,1 --stable) <(cat {input.i2} | tr ' ' '\t' | sort -t$'\t' -k1,1 --stable) | sort -t$'\t' -k1,1n) > {output.o1};"
+        "cat <(echo -e \"$(head -n1 {input.i3})\tOriginal_caller_output\") <(join -t$'\t' -a1 <(tail -n +2 {input.i3} | sort -t$'\t' -k1,1 --stable) <(cat {input.i2} | tr ' ' '\t' | sort -t$'\t' -k1,1 --stable) | sort -t$'\t' -k1,1n) > {output.o2}"
 
-rule create_superset:
+rule create_superset_intra:
     input:
         expand(annOutDir + '{caller}/intrachromosomal/{{sample}}_annotated_comparison_with_orig', caller=CALLERS)
     output:
         s = annOutDir + 'intrachromosomal_SVs_{sample}',
-        t = directory(localTempDir + 'sort/{sample}/')
+        t = directory(localTempDir + 'sort_intra/{sample}/')
     shell:
         "cat {input} | sed '1!{{/^line_num/d;}}' | cut --complement -f1 | sort -T {output.t} -k1,1n -k2,2n > {output.s}"
 
-
+rule create_superset_inter:
+    input:
+        expand(annOutDir + '{caller}/interchromosomal/{{sample}}.compare.summary_with_orig', caller=CALLERS)
+    output:
+        s = annOutDir + 'interchromosomal_SVs_{sample}',
+        t = directory(localTempDir + 'sort_inter/{sample}/')
+    shell:
+        "cat {input} | sed '1!{{/^line_num/d;}}' | cut --complement -f1 | sort -T {output.t} -k1,1n -k2,2n > {output.s}"

@@ -1,3 +1,4 @@
+*.svg
 example_*
 annotation*  
     # will need this, but too big for github...

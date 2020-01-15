@@ -1,0 +1,41 @@
+#### Basic analysis parameters ####
+analysisMode: 'TN'  # TN, TO, germline, de_novo
+callers:            # available callers: svaba, breakdancer, delly, manta
+- svaba
+- breakdancer
+- delly
+- manta
+runMode:
+  callAndAnnotate: yes
+  callOnly: no
+  annotateOnly: no
+refGenome: '/DCEG/CGF/Bioinformatics/Production/Bari/refGenomes/hg19_canonical_correct_chr_order.fa'
+genomeBuild: 'hg19'  # hg19 (chr) or b37 (no chr)
+
+#### Annotation parameters ####
+annotateFile: # only needed if runMode: annotateOnly
+annotationParams:
+  interchromPadding: 50
+  insertionPadding: 500
+  crossCallerOverlap: 0.7
+  genomicContextOverlap: 0.7
+  publicDataOverlap: 0.7
+
+#### Samples to analyze ####
+inFile: '/path/to/sample_file.txt'
+
+#### Directories ####
+inDir: '/path/to/input/data/'
+execDir: '/path/to/pipeline/'
+outDir: '/path/to/output/'
+logDir: '/path/to/output/logs/'
+tempDir: '/path/to/temp/space/'
+
+#### Cluster parameters ####
+clusterMode: 'qsub -V -j y -o ${PWD}' 
+latency: 600
+maxNumJobs: 40
+maxThreads:
+- 4
+- 1
+- 1

@@ -9,18 +9,18 @@ This pipeline coordinates and monitors the submission of a list of bams for stru
 ### II.  Dependencies
 
 To run MoCCA-SV, you will need:
-- python v3.7+
-- snakemake v_+
+- python v3
+- snakemake
 - perl v5.18+
-- singularity v2.6+   **Double check versions.
+- singularity v2+
 
 ### III.  Analysis modes
 
 One of the following analysis modes may be specified in the configuration file:
 1. Tumor/Normal: for matched tumor/normal pairs; set analysisMode to 'TN'
 2. Tumor only: for tumor samples with no paired normal; set analysisMode to 'TO' (under development)
-3. De novo: for trios to detect de novo SVs in the proband; set analysisMode to 'de_novo' (under development)
-4. Germline: for germline samples; set analysisMode to 'germline' (under development)
+3. De novo: for trios to detect de novo SVs in the proband; set analysisMode to 'de_novo' 
+4. Germline: for germline samples; set analysisMode to 'germline' 
 
 ### IV.  Run modes
 
@@ -263,3 +263,18 @@ There are three steps required to add a caller:
 2.  Add a shell script to the `scripts/` directory to convert the new caller's output to bed format.  This can generally be done in three awk statements; to start, see `scripts/TEMPLATE_caller_to_bed.sh` file.  Like in step 1, ensure that you use the same caller name to name this script.
 3.  Create a container with the caller (and any other dependencies) installed.  This can be a singularity container or a docker container, preferably hosted on a public-facing hub.  You may start with `TEMPLATE_singularity_recipe`.  Be sure you are running the relevant rules in your snakefile within the container.
 
+# Citations:
+
+This pipeline was initially described here:
+- Ballew BJ, Yeager M, Hicks B, Zhu B. MoCCA-SV: A Flexible Ensemble Framework for Structural Variant Analysis. Poster session presented at: 19th Annual General Meeting of Advances in Genome Biology and Technology (AGBT); 2019 Feb 27 – Mar 3, Marco Island FL.  
+
+This pipeline currently uses the following callers:
+- Wala JA et al. SvABA: genome-wide detection of structural variants and indels by local assembly (2018). Genome Res, 28(4):581-91.
+- Chen K et al. BreakDancer: an algorithm for high-resolution mapping of genomic structural variation (2009). Nat Methods, 6(9):677-81.
+- Rausch T et al. DELLY: structural variant discovery by integrated paired-end and split-read analysis (2012). Bioinformatics, 28(18):i333-i339.
+- Chen X et al. Manta: rapid detection of structural variants and indels for germline and cancer sequencing applications (2016). Bioinformatics, 32(8):1220-2.
+
+This pipeline uses the following workflow management and containerization solutions:
+- Köster J et al. Snakemake--a scalable bioinformatics workflow engine (2012). Bioinformatics, 28(19): 2520–2.
+- Kurtzer GM, et al. Singularity: Scientific containers for mobility of compute (2017). PLoS ONE, 12(5): e0177459.
+- Sochat V, et al. Enhancing reproducibility in scientific computing: Metrics and registry for Singularity containers (2017). PLoS ONE, 12(11): e0188511.

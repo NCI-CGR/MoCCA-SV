@@ -50,6 +50,11 @@ rule manta_call:
     input:
         mantaTempDir + '{sample}/runWorkflow.py'
     output:
+        mantaTempDir + '{sample}/runWorkflow.py',
+        mantaTempDir + '{sample}/runWorkflow.py.config.pickle',
+        mantaTempDir + '{sample}/workflow.error.log.txt',
+        mantaTempDir + '{sample}/workflow.exitcode.txt',
+        mantaTempDir + '{sample}/workflow.warning.log.txt',
         mantaTempDir + '{sample}/workspace/pyflow.data/logs/pyflow_log.txt',
         mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz',
         mantaTempDir + '{sample}/results/variants/candidateSmallIndels.vcf.gz.tbi',

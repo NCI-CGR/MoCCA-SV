@@ -13,16 +13,20 @@ die() {
     exit 1
 }
 
+usage="Usage: $0 /path/to/config.yaml"
+
 configFile=""
 if [ $# -eq 0 ]; then
-    echo "Please specify config file with full path."
+    echo "Please specify config file with full path.
+$usage"
     exit 1
 else 
     configFile=$1
 fi
 
 if [ ! -f "$configFile" ]; then
-    echo "Config file not found."
+    echo "Config file not found.
+$usage"
     exit 1
 fi
 

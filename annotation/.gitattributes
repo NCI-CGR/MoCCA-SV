@@ -1,2 +1,0 @@
-genomic_context/GRCh37_no_chr/RepeatMasker.bed filter=lfs diff=lfs merge=lfs -text
-genomic_context/hg19_chr/RepeatMasker.bed filter=lfs diff=lfs merge=lfs -text

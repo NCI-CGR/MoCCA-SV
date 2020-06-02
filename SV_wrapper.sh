@@ -51,6 +51,12 @@ if [ ! -d "$outDir" ]; then
     mkdir -p "$outDir" || die "mkdir ${outDir} failed"
 fi
 
+# emit pipeline version
+echo ""
+echo "CGR MoCCA-SV pipeline version:"
+git -C "${execDir}" describe 2> /dev/null || die "Unable to determine pipeline version information."
+echo ""
+
 DATE=$(date +"%Y%m%d%H%M")
 cd $outDir  # snakemake passes $PWD to singularity and binds it as the home directory, and then works relative to that path.
 sing_arg='"'$(echo "-B ${inDir}:/input,${tempDir}:/scratch,${refDir}:/ref,${outDir}:/output,${execDir}:/exec")'"'

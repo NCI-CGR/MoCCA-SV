@@ -33,7 +33,8 @@ rule manta_create_run_script:
         ref = ref,
         fai = ref + '.fai'
     output:
-        mantaTempDir + '{sample}/runWorkflow.py'
+        mantaTempDir + '{sample}/runWorkflow.py',
+        mantaTempDir + '{sample}/runWorkflow.py.config.pickle'
     params:
         outParam = tempBindPath + 'manta_germline/{sample}',
         ref = refBindPath + refFile
@@ -48,10 +49,9 @@ rule manta_call:
     '''
     '''
     input:
-        mantaTempDir + '{sample}/runWorkflow.py'
-    output:
         mantaTempDir + '{sample}/runWorkflow.py',
-        mantaTempDir + '{sample}/runWorkflow.py.config.pickle',
+        mantaTempDir + '{sample}/runWorkflow.py.config.pickle'
+    output:
         mantaTempDir + '{sample}/workflow.error.log.txt',
         mantaTempDir + '{sample}/workflow.exitcode.txt',
         mantaTempDir + '{sample}/workflow.warning.log.txt',

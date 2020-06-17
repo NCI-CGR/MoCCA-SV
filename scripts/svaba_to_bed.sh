@@ -14,7 +14,7 @@ cmd_find_interSV="grep $varType"
 cmd_get_intra_coords="awk '{FS=OFS=\"\\t\"} {print \$1, \$2, gensub(/.*[[:blank:]][atcgnNATCG]*[\[\]][chrNCGLhs37d_]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, \"\\\\1\", \"g\"), \$NF}'"
 cmd_sort_intra_coords="awk '{FS=OFS=\"\\t\"} (\$2<\$3){print \$0} (\$2>\$3){print \$1,\$3,\$2,\$4} (\$2==\$3){print \$1,\$2,\$3+1,\$4}'"
 cmd_get_end1_coords="awk '{FS=OFS=\"\\t\"} (\$2!=0){pos1=\$2-1; pos2=\$2} (\$2==0){pos1=\$2; pos2=\$2+1} {print \$1,pos1,pos2,\$NF}'"
-cmd_get_end2_coords="awk '{FS=OFS=\"\\t\"} {chr=gensub(/.*[[:blank:]][atcgnNATCGRS]*[\[\]]([chrNCGLhs37d_]*[0-9MTXY.]+):[0-9]+[\[\]].*/, \"\\\\1\", \"g\"); pos1=gensub(/.*[[:blank:]][atcgnNATCGRS]*[\[\]][chrNCGLhs37d_]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, \"\\\\1\", \"g\")} (pos1!=0){print chr,pos1-1,pos1,\$NF} (pos1==0){print chr,pos1,pos1+1,\$NF}'"
+cmd_get_end2_coords="awk '{FS=OFS=\"\\t\"} {chr=gensub(/.*[[:blank:]][atcgnNATCGRSk]*[\[\]]([chrNCGLhs37d_]*[0-9MTXY.]+):[0-9]+[\[\]].*/, \"\\\\1\", \"g\"); pos1=gensub(/.*[[:blank:]][atcgnNATCGRSk]*[\[\]][chrNCGLhs37d_]*[0-9MTXY.]+:([0-9]+)[\[\]].*/, \"\\\\1\", \"g\")} (pos1!=0){print chr,pos1-1,pos1,\$NF} (pos1==0){print chr,pos1,pos1+1,\$NF}'"
 
 if [[ $input = *.gz ]]; then
     cmd_intra="zcat ${input} | ${cmd_add_linenum} | ${cmd_remove_headers} | ${cmd_find_intraSV} | ${cmd_get_intra_coords} | ${cmd_sort_intra_coords} > ${outDir}${sample}_intra.bed"

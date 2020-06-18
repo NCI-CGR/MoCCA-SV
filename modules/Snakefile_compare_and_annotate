@@ -373,7 +373,7 @@ rule compare_intra_SVs:
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a {params.query} -b {params.dbs} -filenames -sorted -f {params.overlap} -r -wao > {params.out}' 
+        'bedtools intersect -a {params.query} -b {params.dbs} -filenames -f {params.overlap} -r -wao > {params.out}' 
         # would using -c instead of -wao obviate the following rule?  would have to do it on each caller one-by-one I think.  Not sure how this would work in a rule.
 
 rule parse_intra_comparison:
@@ -609,9 +609,9 @@ rule query_genomic_context:
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -sorted -f {params.overlap} -c > {params.out};'
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter1}) -b {params.db} -sorted -f {params.overlap} -c > {params.out1};'
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter2}) -b {params.db} -sorted -f {params.overlap} -c > {params.out2}'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -f {params.overlap} -c > {params.out};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter1}) -b {params.db} -f {params.overlap} -c > {params.out1};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter2}) -b {params.db} -f {params.overlap} -c > {params.out2}'
         # removed -r because it doesn't need to be reciprocal - if 70% of a variant is in a repeat region, for example, it doesn't matter how much of the repeat region is covered
 
 
@@ -709,7 +709,7 @@ rule query_public_datasets:
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out}'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -f {params.overlap} -r -wao > {params.out}'
         # 'bedtools intersect -a {params.inter1} -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out1};'
         # 'bedtools intersect -a {params.inter2} -b {params.db} -sorted -f {params.overlap} -r -wao > {params.out2}'
 
@@ -786,9 +786,9 @@ rule find_intersected_genes:
     singularity:
         'shub://bballew/NGS_singularity_recipes:bedtools_2-27-1'
     shell:
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -sorted -wao > {params.out};'
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter1}) -b {params.db} -sorted -wao > {params.out1};'
-        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter2}) -b {params.db} -sorted -wao > {params.out2}'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.intra}) -b {params.db} -wao > {params.out};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter1}) -b {params.db} -wao > {params.out1};'
+        'bedtools intersect -a <(sort -k1,1 -k2,2n -k3,3n --stable {params.inter2}) -b {params.db} -wao > {params.out2}'
 
 rule format_intersected_genes:
     input:
